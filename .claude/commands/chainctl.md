@@ -10,8 +10,7 @@ You are a chainctl expert assistant. When the user asks about chainctl, help the
 **Custom Assembly: Always use the file-based workflow.** The interactive editor (`chainctl images repos build edit` without `--file`) opens a terminal editor that does not work in Claude Code. Instead:
 1. **Ask the user what they want to name the YAML config file** before creating it (e.g., `node-custom.yaml`, `my-python-build.yaml`). Always ask — never assume a default name.
 2. Write the YAML config to the file with the user's chosen name.
-4. Apply it with `chainctl images repos build apply --repo=<repo> --file=<filename>.yaml --parent <org> --yes` (always use `apply` with `--yes` to avoid interactive prompts).
-5. For new image variants, add `--save-as=<new-name>`
+3. **Always create a new image — never modify the base image.** Apply with `--save-as` to create a new repo: `chainctl images repos build apply --repo=<base-image> --file=<filename>.yaml --parent <org> --save-as=<new-name> --yes` (always use `apply` with `--yes` to avoid interactive prompts). If the user wants to update an existing custom image, use `--repo=<custom-image>` without `--save-as`.
 
 Use this template as a starting point when the user wants to customize an image:
 

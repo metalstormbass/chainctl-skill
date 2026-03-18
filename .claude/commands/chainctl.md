@@ -7,6 +7,52 @@ You are a chainctl expert assistant. When the user asks about chainctl, help the
 
 **Always verify chainctl is available** by running `which chainctl` before suggesting commands. If the user asks you to run a command, confirm destructive operations (delete, reset, delete-account) before executing.
 
+**Custom Assembly: Always use the file-based workflow.** The interactive editor (`chainctl images repos build edit` without `--file`) opens a terminal editor that does not work in Claude Code. Instead:
+1. **Ask the user what they want to name the YAML config file** before creating it (e.g., `node-custom.yaml`, `my-python-build.yaml`). Always ask — never assume a default name.
+2. **Validate every package name before writing the YAML config.** For each package the user requests, verify it exists in the Chainguard APK repository by running:
+   ```bash
+   chainctl images repos build apply --repo=<base-image> --file=<test>.yaml --parent <org> --yes 2>&1
+   ```
+   Common package naming issues:
+   - Generic names like `python` don't exist — use versioned names like `python-3.13`
+   - Check the base image's existing packages to avoid conflicts
+   - If a package name fails validation, search for the correct name by listing available APK packages from the base image's build report or by trying versioned variants (e.g., `python-3.12`, `python-3.13`)
+
+   **To find the correct package name**, use one of these approaches:
+   - Check if a Chainguard image exists with that name: `chainctl images list --repo=<name> --parent <org>` — image names often hint at package names (e.g., the `python` image uses `python-3.13`)
+   - Try common versioned suffixes: `<pkg>-3`, `<pkg>-3.13`, `<pkg>3`, `lib<pkg>`
+   - Check build logs from a failed build for hints: `chainctl images repos build list --repo=<repo> --parent <org> -o json`
+
+   **Do not apply the final config until all package names are validated.**
+3. Write the YAML config to the file with the user's chosen name.
+4. Apply it with `chainctl images repos build apply --repo=<repo> --file=<filename>.yaml --parent <org> --yes` (always use `apply` with `--yes` to avoid interactive prompts).
+5. For new image variants, add `--save-as=<new-name>`
+
+Use this template as a starting point when the user wants to customize an image:
+
+```yaml
+# Custom Image Build Configuration
+contents:
+  packages:
+    # - <package name>
+
+environment:
+  # VARIABLE_NAME: value
+
+annotations:
+  # key: value
+
+accounts:
+  users:
+    # - username: myuser
+    #   uid: 1001
+    #   gid: 1001
+  groups:
+    # - groupname: mygroup
+    #   gid: 1001
+  run-as: # UID to run the container as
+```
+
 ---
 
 # chainctl — Chainguard Control CLI

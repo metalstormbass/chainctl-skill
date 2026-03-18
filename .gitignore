@@ -1,3 +1,6 @@
 # Claude Code transient files
 .claude/memory/
 .claude/todos/
+
+# Custom Assembly build configs (generated, not part of the skill)
+*.yaml

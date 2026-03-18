@@ -15,26 +15,6 @@ A custom [Claude Code](https://docs.anthropic.com/en/docs/claude-code) slash com
 - **Libraries** — Verify artifacts are built from Chainguard sources using SBOM/signature analysis
 - **Configuration** — View, edit, set, validate local chainctl config
 
-## Usage
-
-Once installed, invoke the skill inside Claude Code:
-
-```
-/chainctl
-```
-
-Then ask Claude anything about chainctl:
-
-- *"How do I set up Docker to pull Chainguard images in CI?"*
-- *"List all images in my org as JSON"*
-- *"Create a custom assembly config that adds curl and jq to the python image"*
-- *"What capabilities does my token have?"*
-- *"Set up a GitHub Actions identity for my org"*
-- *"Show me the changelog for the nginx image"*
-- *"How do I configure cloud account associations for AWS?"*
-
-Claude will construct the correct command with all appropriate flags, explain what it does, and optionally execute it for you.
-
 ## Installation
 
 ### Prerequisites
@@ -54,121 +34,66 @@ chmod +x chainctl
 sudo mv chainctl /usr/local/bin/
 ```
 
-### Setup
+### Option A: Clone and use directly
 
-1. Clone or copy this project:
-   ```bash
-   git clone <repo-url> chainctl_skill
-   cd chainctl_skill
-   ```
-
-2. Open Claude Code from this directory:
-   ```bash
-   claude
-   ```
-
-3. The `/chainctl` slash command is now available. The skill is loaded from `.claude/commands/chainctl.md`.
-
-### Alternative: Install globally
-
-To make the skill available in all your projects, copy the command file to your global Claude Code config:
+Clone this repo and run Claude Code from inside it:
 
 ```bash
+git clone https://github.com/metalstormbass/chainctl-skill.git
+cd chainctl-skill
+claude
+```
+
+The `/chainctl` slash command is immediately available. The included `settings.local.json` pre-approves chainctl commands so Claude can run them without repeated prompts.
+
+### Option B: Copy into an existing project
+
+Copy the `.claude` directory into any project where you want the skill available:
+
+```bash
+git clone https://github.com/metalstormbass/chainctl-skill.git
+cp -r chainctl-skill/.claude/commands/ /path/to/your/project/.claude/commands/
+```
+
+Optionally copy the permissions config too:
+
+```bash
+cp chainctl-skill/.claude/settings.local.json /path/to/your/project/.claude/settings.local.json
+```
+
+> **Note:** If your project already has a `settings.local.json`, merge the `permissions.allow` entries manually instead of overwriting.
+
+### Option C: Install globally
+
+Make the skill available across all your projects:
+
+```bash
+git clone https://github.com/metalstormbass/chainctl-skill.git
 mkdir -p ~/.claude/commands
-cp .claude/commands/chainctl.md ~/.claude/commands/chainctl.md
+cp chainctl-skill/.claude/commands/chainctl.md ~/.claude/commands/chainctl.md
 ```
 
-## Project Structure
+> **Note:** Global installation does not include the permissions config. You will be prompted to approve chainctl commands individually.
+
+## Usage
+
+Once installed, invoke the skill inside Claude Code:
 
 ```
-chainctl_skill/
-├── README.md                          # This file
-└── .claude/
-    ├── settings.local.json            # Permission allowlists for chainctl commands
-    └── commands/
-        └── chainctl.md               # The skill definition (694 lines)
+/chainctl
 ```
 
-### File Details
+Then ask Claude anything about chainctl:
 
-| File | Purpose |
-|------|---------|
-| `.claude/commands/chainctl.md` | The skill prompt — comprehensive chainctl reference with every command, flag, example, and workflow recipe. Loaded when you run `/chainctl`. |
-| `.claude/settings.local.json` | Pre-configured permissions allowing Claude to run `chainctl` subcommands and fetch Chainguard documentation without repeated approval prompts. |
+- *"How do I set up Docker to pull Chainguard images in CI?"*
+- *"List all images in my org as JSON"*
+- *"Create a custom assembly config that adds curl and jq to the python image"*
+- *"What capabilities does my token have?"*
+- *"Set up a GitHub Actions identity for my org"*
+- *"Show me the changelog for the nginx image"*
+- *"How do I configure cloud account associations for AWS?"*
 
-## What the Skill Covers
-
-### Command Groups (7 top-level + utilities)
-
-| Command | Description | Subcommands |
-|---------|-------------|-------------|
-| `chainctl auth` | Authentication & token management | `login`, `logout`, `status`, `configure-docker`, `token`, `pull-token`, `delete-account` |
-| `chainctl config` | Local configuration | `view`, `edit`, `set`, `unset`, `reset`, `save`, `validate` |
-| `chainctl iam` | Identity & access management | `organizations`, `folders`, `identities`, `roles`, `role-bindings`, `invites`, `identity-providers`, `account-associations` |
-| `chainctl images` | Container image operations | `list`, `diff`, `history`, `changelog`, `tags`, `repos`, `advisories`, `entitlements`, `helm` |
-| `chainctl events` | Event subscriptions | `subscriptions` (`list`, `create`, `delete`) |
-| `chainctl packages` | Package management | `versions list` |
-| `chainctl libraries` | Library verification | `verify` |
-| `chainctl update` | Self-update | — |
-| `chainctl version` | Print version | — |
-
-### Custom Assembly (Deep Coverage)
-
-The skill includes detailed documentation for Chainguard's Custom Assembly feature:
-
-- **`chainctl images repos build edit`** — Interactive YAML editor for image customization
-- **`chainctl images repos build apply`** — Non-interactive config application (CI/CD)
-- **`chainctl images repos build list`** — List build reports
-- **`chainctl images repos build logs`** — Retrieve build logs
-
-**Customizable YAML sections:**
-
-| Section | What You Can Configure |
-|---------|----------------------|
-| `contents.packages` | Additional packages from Chainguard's repo |
-| `environment` | Environment variables (except `CHAINGUARD_*` prefix) |
-| `annotations` | OCI annotations (except `dev.chainguard` prefix) |
-| `accounts` | Custom users/groups, UIDs/GIDs, run-as user |
-| `certificates` | Custom CA certs merged with default bundle (Beta) |
-
-### Additional Skill Features
-
-- **All global flags** documented (`--output`, `--api`, `--config`, etc.)
-- **12 output formats** explained with usage guidance
-- **Command aliases** (e.g., `orgs`, `img`, `pkg`, `libs`, `rm`, `ls`, `mk`)
-- **Required IAM capabilities** listed per command
-- **6 workflow recipes**: first-time setup, Docker config, image exploration, IAM management, Custom Assembly, library verification
-- **Safety guards**: confirms destructive operations before execution
-- **Verifies `chainctl` availability** before suggesting commands
-
-## Permissions Configuration
-
-The included `settings.local.json` pre-approves these tool calls so Claude can run chainctl commands without repeated prompts:
-
-```json
-{
-  "permissions": {
-    "allow": [
-      "WebFetch(domain:edu.chainguard.dev)",
-      "Bash(chainctl auth:*)",
-      "Bash(chainctl iam:*)",
-      "Bash(chainctl images:*)",
-      "Bash(chainctl config:*)",
-      "Bash(chainctl events:*)",
-      "Bash(chainctl packages:*)",
-      "Bash(chainctl libraries:*)",
-      "WebSearch"
-    ]
-  }
-}
-```
-
-This allows Claude to:
-- Run any `chainctl` subcommand
-- Fetch documentation from `edu.chainguard.dev`
-- Search the web for additional Chainguard context
-
-> **Note:** Destructive commands (`delete`, `reset`, `delete-account`) are allowed at the CLI permission level but the skill prompt instructs Claude to **always confirm** before executing them.
+Claude will construct the correct command with all appropriate flags, explain what it does, and optionally execute it for you.
 
 ## Examples
 
@@ -214,6 +139,82 @@ chainctl iam identities list --parent my-org -o json
 chainctl iam role-bindings list --parent my-org -o json
 ```
 
+## What the Skill Covers
+
+### Command Groups
+
+| Command | Description | Subcommands |
+|---------|-------------|-------------|
+| `chainctl auth` | Authentication & token management | `login`, `logout`, `status`, `configure-docker`, `token`, `pull-token`, `delete-account` |
+| `chainctl config` | Local configuration | `view`, `edit`, `set`, `unset`, `reset`, `save`, `validate` |
+| `chainctl iam` | Identity & access management | `organizations`, `folders`, `identities`, `roles`, `role-bindings`, `invites`, `identity-providers`, `account-associations` |
+| `chainctl images` | Container image operations | `list`, `diff`, `history`, `changelog`, `tags`, `repos`, `advisories`, `entitlements`, `helm` |
+| `chainctl events` | Event subscriptions | `subscriptions` (`list`, `create`, `delete`) |
+| `chainctl packages` | Package management | `versions list` |
+| `chainctl libraries` | Library verification | `verify` |
+| `chainctl update` | Self-update | — |
+| `chainctl version` | Print version | — |
+
+### Custom Assembly
+
+The skill includes detailed documentation for Chainguard's Custom Assembly feature:
+
+- **`chainctl images repos build edit`** — Interactive YAML editor for image customization
+- **`chainctl images repos build apply`** — Non-interactive config application (CI/CD)
+- **`chainctl images repos build list`** — List build reports
+- **`chainctl images repos build logs`** — Retrieve build logs
+
+### Additional Features
+
+- All global flags documented (`--output`, `--api`, `--config`, etc.)
+- 12 output formats explained with usage guidance
+- Command aliases (e.g., `orgs`, `img`, `pkg`, `libs`, `rm`, `ls`, `mk`)
+- Required IAM capabilities listed per command
+- 6 workflow recipes: first-time setup, Docker config, image exploration, IAM management, Custom Assembly, library verification
+- Safety guards: confirms destructive operations before execution
+- Verifies `chainctl` availability before suggesting commands
+
+## Permissions Configuration
+
+The included `settings.local.json` pre-approves these tool calls so Claude can run chainctl commands without repeated prompts:
+
+```json
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:edu.chainguard.dev)",
+      "Bash(chainctl auth:*)",
+      "Bash(chainctl iam:*)",
+      "Bash(chainctl images:*)",
+      "Bash(chainctl config:*)",
+      "Bash(chainctl events:*)",
+      "Bash(chainctl packages:*)",
+      "Bash(chainctl libraries:*)",
+      "WebSearch"
+    ]
+  }
+}
+```
+
+This allows Claude to:
+- Run any `chainctl` subcommand
+- Fetch documentation from `edu.chainguard.dev`
+- Search the web for additional Chainguard context
+
+> **Note:** Destructive commands (`delete`, `reset`, `delete-account`) are allowed at the CLI permission level but the skill prompt instructs Claude to **always confirm** before executing them.
+
+## Project Structure
+
+```
+chainctl-skill/
+├── .gitignore
+├── README.md
+└── .claude/
+    ├── settings.local.json            # Permission allowlists for chainctl commands
+    └── commands/
+        └── chainctl.md               # The skill definition
+```
+
 ## Extending the Skill
 
 To add coverage for new chainctl commands or features:
@@ -242,4 +243,3 @@ chainctl <new-command> --help
 ## License
 
 MIT
-# chainctl-skill

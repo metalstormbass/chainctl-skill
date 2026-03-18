@@ -1,0 +1,3 @@
+# Claude Code transient files
+.claude/memory/
+.claude/todos/

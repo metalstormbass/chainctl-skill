@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:edu.chainguard.dev)",
+      "Bash(chainctl --help)",
+      "Bash(chainctl auth:*)",
+      "Bash(chainctl iam:*)",
+      "Bash(chainctl images:*)",
+      "Bash(chainctl config:*)",
+      "Bash(chainctl events:*)",
+      "Bash(chainctl packages:*)",
+      "Bash(chainctl libraries:*)",
+      "Bash(for cmd:*)",
+      "Bash(do echo:*)",
+      "Bash(chainctl $cmd --help)",
+      "Bash(done)",
+      "Bash(for sub:*)",
+      "WebSearch",
+      "Bash(git add:*)",
+      "Bash(git check-ignore:*)"
+    ]
+  }
+}

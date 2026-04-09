@@ -1055,7 +1055,7 @@ Create ecosystem library entitlements. Aliases: `make`, `mk`.
 **Flags:**
 - `--ecosystems` — Language ecosystems to entitle: `JAVASCRIPT`, `JAVA`, `PYTHON` (comma-separated for multiple)
 - `--parent` — Name or ID of the org to create an entitlement for
-- `--policy` — Policy to apply: `CHAINGUARD` (Chainguard-only) or `CHAINGUARD_AND_UPSTREAM` (Chainguard repo with upstream fallback)
+- `--policy` — Policy to apply: `CHAINGUARD` (Chainguard-only) or `CHAINGUARD_AND_UPSTREAM` (Chainguard repo with upstream fallback; **currently only supported for JAVASCRIPT**)
 
 **Required Capabilities:** `groups.list`, `libraries.entitlements.create`
 

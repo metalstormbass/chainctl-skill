@@ -171,7 +171,19 @@ chainctl auth configure-npm --pull-token --ttl=24h
 ```
 
 ### `chainctl auth token`
-Print the local Chainguard token. Has subcommand `capabilities` to print token capabilities.
+Print the local Chainguard token.
+
+**Subcommands:** `capabilities` (aliases: `caps`) — print token capabilities.
+
+**Examples:**
+```bash
+# Print the raw token
+chainctl auth token
+
+# Print capabilities of the current token
+chainctl auth token capabilities
+chainctl auth token caps
+```
 
 ### `chainctl auth pull-token`
 Manage pull tokens. Aliases: `pull-tokens`.
@@ -275,21 +287,47 @@ Run diagnostics on local config.
 ### Organizations
 `chainctl iam organizations` (aliases: `orgs`, `org`)
 
-| Command | Description |
-|---------|-------------|
-| `list` | List organizations |
-| `describe` | Describe an organization |
-| `delete` | Delete an organization |
+| Command | Aliases | Description |
+|---------|---------|-------------|
+| `list` | `ls` | List organizations |
+| `describe` | `desc`, `get` | Describe an organization |
+| `delete` | `rm` | Delete an organization |
+
+#### `chainctl iam organizations delete`
+Delete an organization. Accepts an ID, a name, or no argument (interactive selection).
+
+**Flags:**
+- `--skip-refresh` — Skip attempting to refresh the auth token if it becomes out of date
+- `-y, --yes` — Auto-confirm prompts
+
+**Examples:**
+```bash
+# Delete by ID
+chainctl iam organizations delete e533448ca9770c46f99f2d86d60fc7101494e4a3
+
+# Delete by name
+chainctl iam organizations delete my-org
+
+# Interactive selection
+chainctl iam organizations delete
+```
 
 ### Folders
 `chainctl iam folders` (aliases: `folder`)
 
-| Command | Description |
-|---------|-------------|
-| `list` | List folders under an organization |
-| `describe` | Describe a folder |
-| `delete` | Delete a folder |
-| `update` | Update a folder |
+| Command | Aliases | Description |
+|---------|---------|-------------|
+| `list` | `ls` | List folders under an organization |
+| `describe` | `desc`, `get` | Describe a folder |
+| `delete` | `rm` | Delete a folder |
+| `update` | — | Update a folder |
+
+#### `chainctl iam folders delete`
+Delete a folder. Accepts an ID, a name, or no argument (interactive selection).
+
+**Flags:**
+- `--skip-refresh` — Skip attempting to refresh the auth token if it becomes out of date
+- `-y, --yes` — Auto-confirm prompts
 
 #### `chainctl iam folders update`
 Update a folder.
@@ -315,13 +353,57 @@ chainctl iam folders update my-folder --description ""
 ### Identities
 `chainctl iam identities` (aliases: `identity`, `ids`, `id`)
 
-| Command | Description |
-|---------|-------------|
-| `list` | List identities |
-| `create` | Create a new identity (supports `github`, `gitlab`, `aws role`, `aws user` sub-types) |
-| `describe` | View details of an identity |
-| `delete` | Delete one or more identities |
-| `update` | Update an identity |
+| Command | Aliases | Description |
+|---------|---------|-------------|
+| `list` | `ls` | List identities |
+| `create` | `make`, `mk` | Create a new identity (supports `github`, `gitlab`, `aws role`, `aws user` sub-types) |
+| `describe` | `desc`, `get` | View details of an identity |
+| `delete` | `rm` | Delete one or more identities |
+| `update` | — | Update an identity |
+
+#### `chainctl iam identities list`
+List identities. Aliases: `ls`.
+
+**Flags:**
+- `--expired` — Return only expired static identities
+- `--name` — Filter identities by name
+- `--parent` — Parent location to list identities from
+- `--type` — Filter by type: `aws`, `claim_match`, `pull_token`, `service_principal`, `static`
+
+**Examples:**
+```bash
+# List all identities
+chainctl iam identities list
+
+# List only static identities
+chainctl iam identities list --relationship=static
+
+# Filter by name
+chainctl iam identities list --name=my-identity
+
+# List expired identities
+chainctl iam identities list --expired
+
+# List only pull-token identities in an org
+chainctl iam identities list --type=pull_token --parent=my-org
+```
+
+#### `chainctl iam identities delete`
+Delete one or more identities. Aliases: `rm`.
+
+**Flags:**
+- `--expired` — Delete all expired identities (useful with `--parent`)
+- `--parent` — Parent location to delete expired identities from
+- `-y, --yes` — Auto-confirm prompts
+
+**Examples:**
+```bash
+# Delete an identity by name
+chainctl iam identities delete my-identity
+
+# Delete all expired static identities in an organization
+chainctl iam identities delete --expired --parent=my-org --yes
+```
 
 #### `chainctl iam identities create`
 Create a new identity. Aliases: `make`, `mk`.
@@ -480,13 +562,65 @@ chainctl iam identities update my-identity --subject-pattern="^\d{4}$" --audienc
 ### Roles
 `chainctl iam roles` (aliases: `role`)
 
-| Command | Description |
-|---------|-------------|
-| `list` | List IAM roles |
-| `create` | Create an IAM role |
-| `delete` | Delete a custom IAM role |
-| `update` | Update an IAM role |
-| `capabilities list` | List IAM role capabilities |
+| Command | Aliases | Description |
+|---------|---------|-------------|
+| `list` | `ls` | List IAM roles |
+| `create` | `make`, `mk` | Create an IAM role |
+| `delete` | `rm` | Delete a custom IAM role |
+| `update` | — | Update an IAM role |
+| `capabilities list` | `ls` | List IAM role capabilities |
+
+#### `chainctl iam roles list`
+List IAM roles. Aliases: `ls`.
+
+**Flags:**
+- `--capabilities` — Filter by a comma-separated list of capabilities the role must grant
+- `--managed` — Only list managed (built-in) roles
+- `--name` — Exact name of roles to list
+- `--parent` — Location to list roles from
+
+**Examples:**
+```bash
+# List all accessible roles
+chainctl iam roles list
+
+# List managed (built-in) roles
+chainctl iam roles list --managed
+
+# List roles that can create groups
+chainctl iam roles list --capabilities=groups.create
+```
+
+#### `chainctl iam roles capabilities list`
+List all available IAM role capabilities. Aliases: `ls`.
+
+**Flags:**
+- `--actions` — Capability actions to list (e.g. `list`, `create`)
+- `--resources` — Capability resources to list (e.g. `groups`, `repos`)
+
+**Examples:**
+```bash
+# List all capabilities
+chainctl iam roles capabilities list
+
+# Capabilities for groups and repos
+chainctl iam roles capabilities list --resources=groups,repos
+
+# All list-action capabilities
+chainctl iam roles capabilities list --actions=list
+```
+
+#### `chainctl iam roles delete`
+Delete a custom IAM role. Aliases: `rm`.
+
+**Flags:**
+- `-y, --yes` — Auto-confirm prompts
+
+**Examples:**
+```bash
+# Delete a role by ID
+chainctl iam roles delete 3ed98fc...
+```
 
 #### `chainctl iam roles create`
 Create an IAM role. Aliases: `make`, `mk`.

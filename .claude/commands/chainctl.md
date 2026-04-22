@@ -116,6 +116,15 @@ Inspect the local Chainguard token.
 - `--quick` — Perform quick offline token checks (vs. calling the Validate API)
 - Same auth flags as login (`--headless`, `--identity`, `--identity-provider`, `--identity-token`, `--org-name`, `--social-login`)
 
+**Examples:**
+```bash
+# Full online status check
+chainctl auth status
+
+# Fast offline check (no API call)
+chainctl auth status --quick
+```
+
 ### `chainctl auth configure-docker`
 Configure a Docker credential helper for pulling Chainguard images.
 
@@ -171,7 +180,17 @@ chainctl auth configure-npm --pull-token --ttl=24h
 ```
 
 ### `chainctl auth token`
-Print the local Chainguard token. Has subcommand `capabilities` to print token capabilities.
+Print the local Chainguard token. Has subcommand `capabilities` (alias: `caps`) to print token capabilities.
+
+**Examples:**
+```bash
+# Print the raw bearer token
+chainctl auth token
+
+# Inspect what capabilities the current session has
+chainctl auth token capabilities
+chainctl auth token caps
+```
 
 ### `chainctl auth pull-token`
 Manage pull tokens. Aliases: `pull-tokens`.
@@ -322,6 +341,47 @@ chainctl iam folders update my-folder --description ""
 | `describe` | View details of an identity |
 | `delete` | Delete one or more identities |
 | `update` | Update an identity |
+
+#### `chainctl iam identities list`
+List identities. Aliases: `ls`.
+
+**Flags:**
+- `--parent` — Name or ID of the parent location to list identities under
+- `--name` — Filter identities by name
+- `--type` — Filter by identity type (e.g. `static`, `claim_match`, `service_principal`)
+- `--expired` — Show only expired identities
+
+**Required Capabilities:** `groups.list`, `identity.list`
+
+**Examples:**
+```bash
+# List all identities in an org
+chainctl iam identities list --parent my-org
+
+# Filter by name
+chainctl iam identities list --parent my-org --name my-ci-identity
+
+# Show only expired identities
+chainctl iam identities list --parent my-org --expired
+```
+
+#### `chainctl iam identities delete`
+Delete one or more identities. Aliases: `rm`.
+
+**Flags:**
+- `--parent` — Name or ID of the parent location
+- `--expired` — Delete all expired identities in the given parent
+
+**Required Capabilities:** `identity.list`, `identity.delete`
+
+**Examples:**
+```bash
+# Delete a specific identity by name
+chainctl iam identities delete my-identity --parent my-org
+
+# Delete all expired identities under an org
+chainctl iam identities delete --parent my-org --expired
+```
 
 #### `chainctl iam identities create`
 Create a new identity. Aliases: `make`, `mk`.
@@ -486,7 +546,26 @@ chainctl iam identities update my-identity --subject-pattern="^\d{4}$" --audienc
 | `create` | Create an IAM role |
 | `delete` | Delete a custom IAM role |
 | `update` | Update an IAM role |
-| `capabilities list` | List IAM role capabilities |
+| `capabilities list` | List IAM role capabilities (alias: `caps list`) |
+
+#### `chainctl iam roles capabilities list`
+List available IAM capabilities. Aliases: `caps list`, `ls`.
+
+**Flags:**
+- `--actions` — Filter capabilities by action (comma-separated, e.g. `list,create`)
+- `--resources` — Filter capabilities by resource (comma-separated, e.g. `repo,identity`)
+
+**Examples:**
+```bash
+# List all available capabilities
+chainctl iam roles capabilities list
+
+# Only repo-related capabilities
+chainctl iam roles capabilities list --resources=repo
+
+# Only list/create actions across all resources
+chainctl iam roles caps list --actions=list,create
+```
 
 #### `chainctl iam roles create`
 Create an IAM role. Aliases: `make`, `mk`.
@@ -614,7 +693,7 @@ chainctl iam invites create my-org-name --single-use
 ```
 
 ### Identity Providers
-`chainctl iam identity-providers`
+`chainctl iam identity-providers` (aliases: `identity-provider`, `idp`, `idps`)
 
 | Command | Description |
 |---------|-------------|
@@ -676,7 +755,7 @@ chainctl iam identity-providers update my-idp --default-role=viewer
 ```
 
 ### Account Associations
-`chainctl iam account-associations` (aliases: `accountassociations`)
+`chainctl iam account-associations` (aliases: `accountassociations`, `account-association`, `accountassociation`)
 
 Configure cloud provider account associations (AWS, Azure, GCP).
 
@@ -797,6 +876,21 @@ Aliases: `tag`. Subcommands: `list`, `resolve`.
 - `list` — List tags from repositories (use `--parent`, `--public`, or `--repo`)
 - `resolve` — Resolve tags for a specific image reference
 
+#### `chainctl images tags resolve`
+Resolve tags for a specific image reference (returns the digest the tag currently points to).
+
+**Flags:**
+- `--all` — Resolve all matching platforms/tags (vs. just the default)
+
+**Examples:**
+```bash
+# Resolve a tag to its current digest
+chainctl images tags resolve cgr.dev/chainguard/nginx:latest
+
+# Resolve for all platforms (multi-arch)
+chainctl images tags resolve cgr.dev/chainguard/nginx:latest --all
+```
+
 ### `chainctl images repos`
 Aliases: `repositories`, `repository`, `repo`. Image repository management.
 
@@ -908,9 +1002,9 @@ Apply a YAML configuration file non-interactively. Ideal for CI/CD pipelines and
 **Flags:**
 - `--repo` — Name or ID of the repo
 - `--parent` — Name or ID of the parent location
-- `-f, --file` — Config file to apply (required)
+- `-f, --file` — Config file to apply
 - `--save-as` — Create a new repo instead of updating existing
-- `--with-certificates` — Certificate files to include
+- `--with-certificates` — Certificate files to include (at least one of `--file` or `--with-certificates` is required)
 - `-y, --yes` — Auto-confirm (for CI/CD)
 
 **Required Capabilities:** `groups.list`, `repo.update`, `repo.list`

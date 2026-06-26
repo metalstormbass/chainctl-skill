@@ -1855,6 +1855,35 @@ curl -H "Authorization: Bearer $(chainctl auth token --audience=libraries.cgr.de
   "https://libraries.cgr.dev/javascript/-/api/malware?package=@antv/g" | jq .
 ```
 
+#### Platform API v1 equivalent — `GET /libraries/v1/malware/blocklist` (all ecosystems)
+The registry endpoint above is JavaScript-only. The **Platform API v1** exposes the same block list **across all ecosystems** (npm, PyPI, Maven) and additionally returns the **`reason` tags and `description`** that the registry endpoint does not yet surface. Documented in the API v1 spec under the `Malware` tag.
+
+- **Endpoint:** `GET https://console-api.enforce.dev/libraries/v1/malware/blocklist`
+- **Auth:** `Authorization: Bearer $(chainctl auth token)` (standard platform token — note this uses the **default audience**, not `--audience=libraries.cgr.dev`).
+- **Summary:** "ListBlockList returns the merged version- and package-scoped block list, optionally filtered by ecosystem, package, source, time, and scope."
+
+**Query parameters (all optional):**
+| Param | Description |
+|-------|-------------|
+| `ecosystem` | Single ecosystem as stored, e.g. `npm`, `PyPI`, `Maven`. Empty = all. |
+| `packageName` | Exact package name. Empty = all. |
+| `source` | Entry origin, e.g. `osv`, `manual`, `chainguard`. Empty = all. |
+| `since` | Return only entries blocked at/after this time (RFC3339). |
+| `scope` | `MALWARE_SCOPE_UNKNOWN` (default — both), `MALWARE_SCOPE_VERSION`, or `MALWARE_SCOPE_PACKAGE`. |
+| `pageSize` | Max entries per page (service may return fewer). |
+| `pageToken` | Cursor from a previous response's `nextPageToken` (other filters must match the original call). |
+
+**Response (`MalwareBlockListEntryList`):** `items[]`, `nextPageToken`, `totalCount`. Each entry: `blockedAt`, `ecosystem`, `packageName`, `version` (empty for package-scoped entries), `scope`, `source`, `malid` (e.g. `MAL-2024-12345`), `reason[]` (fixed-vocabulary tags like `install_script_exfiltration`, `typosquat` — populated on `chainguard`-source entries), `description` (free-form, also on `chainguard`-source entries).
+
+```bash
+# All npm entries blocked since a date
+curl -H "Authorization: Bearer $(chainctl auth token)" \
+  "https://console-api.enforce.dev/libraries/v1/malware/blocklist?ecosystem=npm&since=2026-05-15T00:00:00Z" | jq .
+# Package-scoped PyPI entries only
+curl -H "Authorization: Bearer $(chainctl auth token)" \
+  "https://console-api.enforce.dev/libraries/v1/malware/blocklist?ecosystem=PyPI&scope=MALWARE_SCOPE_PACKAGE" | jq .
+```
+
 ---
 
 ## agent — Agent Commands (The Guardener)

@@ -24,7 +24,9 @@
       "Bash(git add:*)",
       "Bash(git check-ignore:*)",
       "Bash(git commit:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(cp /Users/mike/Projects/chainctl_skill/.claude/commands/chainctl.md /Users/mike/.claude/commands/chainctl.md)",
+      "Read(//Users/mike/.claude/commands/**)"
     ]
   }
 }

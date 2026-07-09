@@ -405,6 +405,10 @@ Built-in roles cannot be edited or deleted. Custom role changes take effect imme
 | `libraries.{java,python,javascript}.pull_token_creator` | Create pull tokens for that ecosystem (same `identity.list`-omission rationale as `registry.pull_token_creator`) |
 | `guardener.admin` | Accept Guardener legal terms for the org (required once before anyone in the org can run sessions). Also has the capabilities of `guardener.user`. |
 | `guardener.user` | Minimum role to run `chainctl agent dockerfile` sessions after terms are accepted. |
+| `guardener.association.manage` | Link/unlink a GitHub org to a Chainguard group via `chainctl guardener github` (the Guardener GitHub App integration). Held by `owner`. |
+| `guardener.association.list` | Read-only: list the GitHub orgs linked to a group via `chainctl guardener github status` (no GitHub authorization/browser flow). |
+| `guardener.dfc.convert` | Run the `dfc` (Dockerfile Converter) conversion path. |
+| `policies.override.create` | Create per-artifact registry-policy overrides (`chainctl policies override create`) — separate from generic edit capabilities; typically owner-only. |
 
 **UIDP structure:** `parent/child/suid`, where each segment is URL-safe hex. `UID` = 20 bytes, `SUID` = 8 bytes within a scope. Events, subscriptions, and `--identity`/`--parent` flags all expect UIDPs. Events propagate parent → child, so a subscription on a parent group sees events in its descendants; `Ce-Subject` on each event carries every SUID in the path.
 
@@ -419,7 +423,7 @@ Built-in roles cannot be edited or deleted. Custom role changes take effect imme
 |---------|-------------|
 | `list` | List organizations (caps: `groups.list`) |
 | `describe` | Describe an organization (caps: `groups.list`, `account_associations.list`, `identity_providers.list`) |
-| `delete` | Delete an organization (caps: `groups.list`, `groups.delete`). Flag `--skip-refresh` skips re-authenticating if the token is stale. |
+| `delete` | Delete an organization (caps: `groups.list`, `groups.delete`). Flags: `--skip-refresh` (skip re-authenticating if the token is stale), `-y, --yes`. Accepts the org by name or ID, or interactively if omitted. |
 
 **Verified organizations:** verification is a manual Customer Success process. After verification the org's `name` can be used interchangeably with its UIDP in `cgr.dev/<name>/...` and `--org-name`. Renaming a verified org is prohibited.
 
@@ -1292,6 +1296,7 @@ Interactive editor to customize a Chainguard image. Opens your editor with the c
 - `-f, --file` — Pre-written config file (skips interactive editor)
 - `--save-as` — Create a new repo with the edited config instead of modifying the existing one
 - `--with-certificates` — Certificate file to include. **Repeatable** (not comma-separated) — pass once per file. Currently the only chainctl + API path for managing custom certs (Console UI is not yet GA).
+- `--with-runtime-repositories` — Comma-separated list of runtime APK repository URLs to write to `/etc/apk/repositories` in the image. When set, these **replace** the default `virtualapk.cgr.dev` repositories so runtime `apk add` resolves against your own HTTPS mirrors (build-time resolution still uses `apk.cgr.dev`). CLI equivalent of the `contents.runtime_repositories` YAML field.
 
 **Required Capabilities:** `groups.list`, `repo.create`, `repo.update`, `repo.list`
 
@@ -1323,7 +1328,8 @@ Apply a YAML configuration file non-interactively to an **existing** repo. Ideal
 - `--repo` — `stringArray`, **repeatable**, accepts shell-style wildcards (`*`, `?`, `[abc]`). Fan one config out over many repos in one invocation. Can be specified multiple times.
 - `--parent` — Name or ID of the parent location
 - `-f, --file` — Config file to apply
-- `--with-certificates` — Certificate file to include. The `edit` reference describes it as "can be specified multiple times" (repeatable); the `apply` reference Options block calls it a "Comma separated list" — both forms are accepted by the underlying cobra `stringSlice`. At least one of `--file` or `--with-certificates` is required.
+- `--with-certificates` — Certificate file to include. The `edit` reference describes it as "can be specified multiple times" (repeatable); the `apply` reference Options block calls it a "Comma separated list" — both forms are accepted by the underlying cobra `stringSlice`.
+- `--with-runtime-repositories` — Comma-separated list of runtime APK repository URLs written to `/etc/apk/repositories` (replaces the default `virtualapk.cgr.dev` entries). Same semantics as on `edit`. **At least one of `--file`, `--with-certificates`, or `--with-runtime-repositories` is required** (multiple are merged).
 - `--dry-run` — Print the diff without applying. **Exits non-zero if changes would be made** — useful for CI drift detection.
 - `-y, --yes` — Auto-confirm (for CI/CD)
 
@@ -1462,7 +1468,9 @@ Subscribe to events. Aliases: `make`, `mk`.
 
 **Full CloudEvent envelope** carries: `Ce-Type` (event type), `Ce-Source` (`cgr.dev` for registry events, otherwise the `console-api.enforce.dev` endpoint URL), `Ce-Audience: customer`, `Ce-Group: <UID of parent group>`, `Ce-Subject` (UIDP including every SUID in the path — for subscriptions inside sub-folders the sub-group SUID is appended), `Ce-Actor` (e.g. `enforce-prod-registry-<id>@prod-enforce-fabc.iam.gserviceaccount.com` — the GCP service account that emitted the event), `Ce-Specversion`, `Ce-Time`, `Authorization: Bearer <JWT>`, `User-Agent: Chainguard Enforce`. **Body of `registry.pull` events** carries `location` (approximate geolocation like `"ColumbusOHUS"` or `"Minato City13JP"`), `remote_address`, and `user_agent` — useful for audit/anomaly detection. Verification order: validate `iss`, validate `sub`, then verify JWT signature.
 
-**Container Mirroring example:** Chainguard publishes a Terraform module at `platform-examples/image-copy-gcp/iac` that wires `registry.push` events into a webhook that mirrors images to GCP Artifact Registry. Inputs: `name`, `project_id`, `group_name`, `location`, `dst_repo`. Result path: `<location>-docker.pkg.dev/<project_id>/<name>-<dst_repo>`.
+**Container Mirroring example:** Chainguard publishes a Terraform module at `platform-examples/image-copy-gcp/iac` that wires `registry.push` events into a webhook that mirrors images to GCP Artifact Registry. Inputs: `name`, `project_id`, `group_name`, `location`, `dst_repo`. Result path: `<location>-docker.pkg.dev/<project_id>/<name>-<dst_repo>`. (Note the `platform-examples` repo moved to the `chainguard-demo` GitHub org; the old `chainguard-dev/platform-examples` path 301-redirects.)
+
+**Pull-through cache setup (registry-native, no chainctl):** any pull-through/remote cache points its upstream at exactly `https://cgr.dev/` (**no path**); free/public images proxy unauthenticated, private/Production images need a pull token as the credential. **AWS ECR now natively supports `cgr.dev` as a pull-through upstream** (via `aws ecr create-pull-through-cache-rule`, documented as of **March 2026**) — this supersedes the older "ECR can't proxy, use a mirroring Lambda" guidance (the `image-copy-ecr` / `aws-ecr-pull-through` Terraform modules remain valid for active mirroring). GCP Artifact Registry (Remote repo, Custom upstream, token in Secret Manager), JFrog Artifactory (Remote Docker repo, enable Token Auth + **"Block Mismatching Mime Types"**), and Sonatype Nexus (docker-proxy, one dedicated port per repo — Nexus caps at ~20) are the other documented targets. Azure ACR has no native pull-through — mirror-only via `image-copy-acr` (needs `registry.pull` **and** `viewer` on the Chainguard side for signature verification).
 
 **Common event types (`Ce-Type`):**
 - `dev.chainguard.registry.pull.v1` / `push.v1`
@@ -1500,6 +1508,8 @@ List version data for a Chainguard **managed version stream**. Aliases: `ls`.
 
 ## actions — Chainguard Actions product entitlements
 
+Chainguard Actions are hardened, drop-in replacements for popular GitHub Actions (all internal `uses:`/image refs pinned to digests, re-hardened on upstream updates). **Prerequisites: chainctl `v0.2.261+`, an active org, and `Owner` access to enable the product.** Consume by pointing your workflow `uses:` at `chainguard-actions/<action-name>@main` (upstream org prefixes the name, e.g. `tj-actions/changed-files` → `tj-actions-changed-files`).
+
 `chainctl actions entitlements` — manage the Chainguard Actions product entitlement on an organization.
 
 | Command | Description |
@@ -1527,14 +1537,16 @@ List Actions catalog entries available **within an organization**.
 - `--page-size` — Max actions per page.
 
 ### `chainctl actions discover [TARGET]`
-Walks a GitHub repo's workflows and composite-action definitions and resolves every action and container image they (transitively) use. Useful for auditing supply-chain dependencies before enabling Chainguard Actions.
+Walks a GitHub repo's workflows and composite-action definitions and lists every action and container image they reference, matching each against the Chainguard Actions catalog. Useful for auditing supply-chain dependencies before enabling Chainguard Actions. **Required capability:** `actions.list`.
 
 **Positional `TARGET`:**
-- Local directory (default `.`).
+- Local directory (default `.`) — scans `.github/workflows/` and `action.{yml,yaml}`.
 - `owner/repo` — a GitHub repo at default branch.
 - `owner/repo[/subpath]@version` — a specific ref (tag, branch, commit).
 
 **Flags:**
+- `--recursive` — **By default only directly-referenced actions are listed.** Pass `--recursive` to follow each referenced action into its own definition on GitHub and resolve the **full transitive** dependency graph. (Older chainctl resolved transitively by default; the change to opt-in transitive resolution landed between `v0.2.302` and `v0.2.307`.)
+- `--skip-catalog` — Skip matching discovered actions against the Chainguard Actions catalog.
 - `--cache-dir` — Default `$TMPDIR/chainctl-discover-cache`.
 - `--clear-cache` — Wipe the cache before discovering.
 - `--timeout` — Default `5m`.
@@ -1553,17 +1565,47 @@ Walks a GitHub repo's workflows and composite-action definitions and resolves ev
 | `describe --policy=<name> --parent=<org>` | Show a policy's full definition + parameter schema (output is usable with `enable`). |
 | `enable --policy=<name> --parent=<org>` | Enable a policy (creates a binding with the given mode). Shortcut for `binding create`. |
 | `disable --policy=<name> --parent=<org>` | Disable a policy. Shortcut for `binding delete`. |
-| `check IMAGE_REF` | Check whether an image (tag or digest) would be allowed by the current policies. **Positional** image ref; non-zero exit on `DENIED`/`ERROR` (CI-friendly). |
+| `check IMAGE_REF` | Check whether an image (tag or digest) would be allowed by the current policies. **Positional** image ref; non-zero exit on `DENIED`/`ERROR` **regardless of the binding's mode** (so it's CI-friendly even while a policy is still in `DRY_RUN`). |
 | `binding create` | Create a new binding (alternative to `enable`). |
 | `binding delete [BINDING_ID \| --policy <name> --parent <org>]` | Delete a binding by ID (positional) or by policy. |
 | `binding list --parent=<org>` | List bindings. |
+| `decision list` | List recorded pull-time policy decisions (see below). |
+| `override create/delete/list` | Manage per-artifact policy waivers (see below). |
 
 **Common flags on `enable` / `binding create`:**
 - `--policy` — Policy name or UIDP to attach (required).
 - `--parent` — Org or folder for the binding.
 - `--mode` — `ENFORCE` or `DRY_RUN` (default `DRY_RUN`).
-- `--param` — `stringArray`, repeatable; parameter values as `key=value` (the schema comes from `policies describe`).
+- `--param` — `stringArray`, repeatable; parameter values as `key=value` (the schema comes from `policies describe`). For `STRING_LIST` params, list items are comma-separated within a single `--param` value.
 - `--resources` — `strings`; default `[registry.chainguard.dev/Repo]`. The resource types the binding applies to.
+
+**System policies** ship with the platform (chainctl currently only binds to these, not custom ones). Documented examples: **`no-eol`** (block end-of-life images; no parameters), **`cooldown`** (param `days`, default `7`, range `1`–`365`), and **`support-window`** (param `months`, default `6`, range `1`–`24`). `chainctl policies list` shows what's available to your org; `chainctl policies describe --policy=<name>` prints the parameter schema plus a copyable `enable` invocation. **Recommended rollout:** enable in `DRY_RUN`, review `decision list`, then promote to `ENFORCE`.
+
+#### `chainctl policies decision list`
+A *decision* records the outcome of evaluating one policy against one image digest at pull time. Decisions are recorded for **both `ENFORCE` and `DRY_RUN` bindings**, so you can review what a policy blocked — or *would have* blocked — before promoting it. Each row shows the digest, the policy, the mode, the outcome, and a reason when available.
+
+**Flags:** `--parent` (org), `--repo` (single repository), `--policy` (name or UIDP), `--mode` (`ENFORCE`\|`DRY_RUN`), `--result` (`ALLOWED`\|`DENIED`\|`ERROR`), `--since` (time window, e.g. `7d`).
+
+```bash
+# What would the cooldown policy have blocked in the last day?
+chainctl policies decision list --parent=engineering --policy=cooldown --result=DENIED --since=1d
+# All decisions for one repo
+chainctl policies decision list --parent=engineering --repo=nginx
+```
+
+#### `chainctl policies override create/delete/list`
+An *override* is an admin-granted waiver that flips a `DENIED` result to `ALLOWED` for **one specific artifact (manifest digest)**. It does not change the policy or its binding — it records a deliberate, attributable exception applied *after* evaluation.
+
+**`override create` flags:** `--policy` (name/UIDP, required), `--digest` (manifest digest to waive, e.g. `sha256:abc...`, required), `--reason` (justification, required), `--parent`.
+
+**Required Capabilities:** `policies.override.create` — a separate capability typically held only by org owners (not granted by generic edit roles).
+
+```bash
+# Waive the no-eol policy for one specific image digest
+chainctl policies override create --policy=no-eol --parent=engineering \
+  --digest=sha256:abc123... --reason="approved exception, ticket OPS-42"
+chainctl policies override list --parent=engineering
+```
 
 ---
 
@@ -1580,7 +1622,7 @@ Walks a GitHub repo's workflows and composite-action definitions and resolves ev
 | `pull <ref> [<dir>]` | Download a published skill. `<ref>` = `org/name[:tag]`; `<dir>` defaults to `./`. Flag: `--force`. |
 | `install <ref>` | Download AND install into agent directories — writes a shared canonical copy to `.agents/skills/` and creates agent-specific symlinks. Flags: `-a, --agent stringArray` (repeatable target list; `--agent '*'` for all), `--copy` (per-agent copies instead of symlinks), `--global` (install to `~/` instead of project-local). |
 | `uninstall <name>` | Local-only (does NOT touch the registry). `<name>` is the skill name (no org/tag). Flags: `-a, --agent stringArray`, `--global`, `-y, --yes`. |
-| `list` | List skills published by an org. Flag: `-g, --group`. |
+| `list` | List skills published by an org. Flags: `-g, --group`, `-r, --recursive` (recurse into nested folders and list every skill by its full path). |
 | `versions <ref>` | List all published tags for `<ref>` = `org/name` (no tag). |
 | `describe <ref>` | Show metadata for a published skill. |
 | `validate [<path>]` | Spec-compliance check, no network. Flag: `--strict` (also warns on optional recommended fields). |
@@ -1622,6 +1664,7 @@ Analyze artifacts to determine how much was built from source by Chainguard, usi
 **Path prefixes:** `remote:<url>` analyzes a remote artifact without downloading (anonymous/public URLs only — no authenticated repo access); `localhost/<image>` analyzes a local container image (distinct from `docker-archive:`); `./node_modules` works **only if `.package-lock.json` is present** in the directory (npm v7+; images built before that or with the lockfile stripped can't be verified through this path).
 
 **Flags:**
+- `--concurrency` — Number of artifacts verified in parallel (nested archives within one input, or inputs across a multi-path run). `0` = default of **16**. Lower it on constrained CI runners; raise it to speed up large multi-path scans.
 - `-d, --detailed` — Show detailed per-artifact results
 - `--no-color` — Disable colored output
 - `-o, --output` — Output format: `text` (default), `json`, `yaml`
@@ -1685,6 +1728,10 @@ Rewrite integrity hashes in an existing lockfile to use Chainguard checksums. **
 - `--registry-url` — Point at a private repository manager (Artifactory / Nexus / GAR) instead of `libraries.cgr.dev` directly. **Mutually exclusive with `--ecosystems-url`, `--remediated`, and `--cuda`.** When set, Chainguard token sources are **deliberately not consulted** to avoid leaking a JWT to a third-party host.
 - `--fallback-registry-url` — For JS only. Synthesizes tarball URLs for packages not found in Chainguard Libraries (e.g. when only a subset of the dependency tree is Chainguard-rebuilt). Empty by default; the command fails listing offenders if fallback is needed. Avoid pointing at `registry.npmjs.org` directly (malware risk) — prefer a private/internal mirror.
 - `--token`, `--username`, `--password` — Auth credentials used with `--registry-url`. Also readable from env vars `CHAINCTL_AUTH_TOKEN`, `CHAINCTL_REGISTRY_USERNAME`, `CHAINCTL_REGISTRY_PASSWORD`, and from `~/.netrc` (or `$NETRC`) keyed on the registry host.
+- `--include-scope` — **JavaScript only.** npm scope(s) (e.g. `@myorg`) to reroute to Chainguard **even when `.npmrc` pins them to a different registry**. By default a scope that `.npmrc` points at a non-Chainguard registry is left untouched. Repeatable and/or comma-separated. Mutually exclusive with `--include-all-scopes`.
+- `--include-all-scopes` — **JavaScript only.** Ignore per-scope registries in `.npmrc` and reroute **every** package to Chainguard. Mutually exclusive with `--include-scope`.
+- `--ignore-netrc` — Do not read credentials from `~/.netrc` (`$NETRC`). Use to stop a stale/unrelated `.netrc` entry for the registry host from shadowing the Chainguard-native auth (so it falls through to `chainctl auth pull-token --parent` or the interactive org prompt).
+- `--no-auth` — Send no authentication (for a network-limited private registry that requires none and rejects any `Authorization` header). Overrides all ambient credential sources; mutually exclusive with `--token` and `--username`/`--password`.
 
 **Behavior:** for formats that accept multiple hashes (pip-tools `requirements.txt`, `poetry.lock`), Chainguard hashes are **appended** alongside upstream hashes; for single-hash formats, they replace. Tarball/`resolved` URLs are also updated. Output prints a "Next steps" block with the right reinstall command for the detected toolchain — surface it to users so they don't miss the post-rewrite reinstall. Caveats: JS packages resolved through the upstream-fallback path may keep `registry.npmjs.org` URLs until Chainguard rebuilds them; `--registry-url` enables repository-manager workflows that previous releases didn't support.
 
@@ -1782,7 +1829,7 @@ Controls **which upstream packages your org can pull**. A *policy* configures au
 - `--description` — policy description.
 - `--cooldown-days` (`int32`, default `-1`) — cooldown window in days: `0` disables, `1`–`30` explicit, omit (`-1`) to inherit the **7-day** system default.
 - `--block` (`stringArray`, repeatable) — package to always deny, as `purl=<package-url>`; append `@<version>` to block a single version.
-- `--allow` (`stringArray`, repeatable) — package permitted to bypass gates, comma-separated key=value: `purl=<package-url>[,bypass-cooldown=true][,bypass-malware=true][,justification="..."]`. **`justification` is required with `bypass-malware`.**
+- `--allow` (`stringArray`, repeatable) — package permitted to override gates, comma-separated key=value: `purl=<package-url>[,override-cooldown=true][,override-malware=true][,justification="..."]`. **`justification` is required with `override-malware`.**
 
 **purl format by ecosystem:** `pkg:pypi/<name>`, `pkg:npm/<name>`, `pkg:npm/%40<scope>/<name>` (scoped), `pkg:maven/<group>/<artifact>`. Append `@<version>` to scope to one version (e.g. `pkg:npm/lodash@4.17.20`).
 
@@ -1799,8 +1846,27 @@ chainctl libraries policy update js-cooldown --block='purl=pkg:npm/lodash@4.17.2
 chainctl libraries policy binding list --parent=my-org
 ```
 
+### `chainctl libraries packages` — browse the Libraries catalog
+Parent group (aliases `package`, `pkg`, `pkgs`) for inspecting the Chainguard Libraries package catalog across ecosystems, plus reporting policy-withheld packages.
+
+| Command | Description |
+|---------|-------------|
+| `list --ecosystem ECOSYSTEM [--query Q]` | List catalog packages for an ecosystem. Flags: `--ecosystem` (`JAVA\|PYTHON\|JAVASCRIPT`, required), `--query` (name-substring filter), `--limit` (max results; auto-paginates, default 50), `--remediated` (only remediated packages). Returns a package **id** used by `versions`. |
+| `count [--ecosystem ECOSYSTEM]` | Total package count in the catalog, optionally scoped to one ecosystem. |
+| `versions PACKAGE_ID` | List all versions of a single package, identified by the **id from `packages list`** (positional, not the package name). |
+| `blocked` | Packages withheld by an active policy (see below). |
+
+```bash
+# Find catalog packages whose name contains "spring" in Java
+chainctl libraries packages list --ecosystem=JAVA --query=spring
+# How many JavaScript packages does Chainguard build?
+chainctl libraries packages count --ecosystem=JAVASCRIPT
+# List every version of one package (PACKAGE_ID comes from `packages list`)
+chainctl libraries packages versions <PACKAGE_ID>
+```
+
 ### `chainctl libraries packages blocked`
-List packages withheld by an active Libraries policy. Defaults to `ENFORCE`-mode events from the **last 30 days**. (Parent group `chainctl libraries packages` — "Inspect Libraries packages".)
+List packages withheld by an active Libraries policy. Defaults to `ENFORCE`-mode events from the **last 30 days**.
 
 **Flags:** `--parent` (scope to an org), `--ecosystem` (`JAVA|PYTHON|JAVASCRIPT`), `--mode` (`ENFORCE|DRY_RUN`, default `ENFORCE`), `--package` (exact name match, case-insensitive).
 
@@ -1882,6 +1948,47 @@ curl -H "Authorization: Bearer $(chainctl auth token)" \
 # Package-scoped PyPI entries only
 curl -H "Authorization: Bearer $(chainctl auth token)" \
   "https://console-api.enforce.dev/libraries/v1/malware/blocklist?ecosystem=PyPI&scope=MALWARE_SCOPE_PACKAGE" | jq .
+```
+
+---
+
+## guardener — Guardener GitHub App integration
+
+`chainctl guardener` manages the **Guardener GitHub App integration** — the *hosted* path that lets Chainguard's Guardener open automated Dockerfile-migration PRs against your GitHub repos. **This is distinct from `chainctl agent dockerfile`** (the local CLI Guardener that runs on your machine). The integration works by linking a GitHub organization to a Chainguard group so the App is authorized to act on that org's behalf. The Guardener GitHub App must already be **installed on the GitHub org** before you can link it.
+
+**New capability:** `guardener.association.manage` — required to link/unlink orgs (in addition to the existing `guardener.admin` / `guardener.user` roles for running migrations). `owner` holds it by default.
+
+### `chainctl guardener github link`
+Link a GitHub organization to a Chainguard group. You must be an **owner of both** the Chainguard group (holding `guardener.association.manage`) **and** the GitHub organization. A browser window opens to authorize with GitHub.
+
+**Flags:**
+- `--github-org` — GitHub account login to link (an organization, or your own user).
+- `--group` — UIDP of the Chainguard group to link to.
+- `--port` — Local loopback port for the GitHub OAuth callback (default `8989`).
+
+```bash
+chainctl guardener github link --github-org=my-gh-org --group=<GROUP_UIDP>
+```
+
+### `chainctl guardener github unlink`
+Unlink a GitHub organization from its Chainguard group.
+
+**Flags:** same as `link` (`--github-org`, `--group`, `--port`).
+
+**Behavior nuance:** if `--group` is set and you hold `guardener.association.manage` on that group, the org is unlinked using your Chainguard credentials with **no browser**. Otherwise it falls back to the GitHub OAuth flow (which proves you own the org). Either way you must be logged in to Chainguard.
+
+```bash
+# Fast path (Chainguard creds, no browser) when you hold guardener.association.manage
+chainctl guardener github unlink --github-org=my-gh-org --group=<GROUP_UIDP>
+```
+
+### `chainctl guardener github status`
+List the GitHub organizations currently linked to a Chainguard group. **Read-only** — requires only `guardener.association.list` on the group, with **no GitHub authorization or browser flow**. Prompts you to pick a group if `--group` is omitted.
+
+**Flags:** `--group` — Name or UIDP of the Chainguard group to list.
+
+```bash
+chainctl guardener github status --group=<GROUP_UIDP>
 ```
 
 ---
@@ -2417,7 +2524,7 @@ Referrer tags (`sha256-<digest>.sig|sbom|att`) are exposed via `chainctl images 
 4. **Stuck Guardener migration**: use `--log-file <path>` to capture detailed logs; extend Bash timeout to 1800000 ms or longer.
 5. **`libraries verify` returns 0% on fat JARs**: expected — verify individual JARs from `~/.m2/repository` before assembly.
 6. **Custom Assembly build timeout (~1 hour)**: normal builds complete in <20 min. Use `chainctl images repos build logs --repo=<name> --build-id=<id>` to read server-side logs.
-7. **npm 404 on a brand-new upstream version**: expected during the 7-day cooldown on `CHAINGUARD_AND_UPSTREAM`. With upstream fallback enabled, the cooldown also applies to brand-new Chainguard-built versions. Retry after the window, lower the cooldown via `chainctl libraries policy create/update --cooldown-days` (range `0`–`30`; `0` disables — note this moved off `entitlements create` in chainctl `v0.2.291`), bypass it for a specific package with a policy `--allow` entry (`bypass-cooldown=true`), or pin a slightly older version. Config changes take up to 30 minutes to apply.
+7. **npm 404 on a brand-new upstream version**: expected during the 7-day cooldown on `CHAINGUARD_AND_UPSTREAM`. With upstream fallback enabled, the cooldown also applies to brand-new Chainguard-built versions. Retry after the window, lower the cooldown via `chainctl libraries policy create/update --cooldown-days` (range `0`–`30`; `0` disables — note this moved off `entitlements create` in chainctl `v0.2.291`), bypass it for a specific package with a policy `--allow` entry (`override-cooldown=true`), or pin a slightly older version. Config changes take up to 30 minutes to apply.
 8. **Stale `chainctl update` cache**: `rm -f ~/.cache/chainctl/chainctl.bak`.
 9. **Java build looks fine but everything came from Maven Central** — Gradle repository order matters. The Chainguard `maven { url = ... }` block must be **above** `mavenCentral()`. Same for Bazel `MODULE.bazel` `repositories = [...]`. Maven build log signal: `Downloaded from chainguard:` ✓ vs. `Downloaded from central:` ✗.
 10. **`uv sync --frozen` pulls from PyPI despite Chainguard config** — `--frozen` bypasses index configuration entirely and uses URLs embedded in `uv.lock`. Run `uv lock` (no `--frozen`) first, or `chainctl libraries update-hashes uv.lock`.
@@ -2505,8 +2612,8 @@ chainctl iam role-bindings list --parent my-org
 # Create an invite
 chainctl iam invites create --parent my-org
 
-# Check cloud account associations
-chainctl iam account-associations describe --parent my-org
+# Check cloud account associations (target is POSITIONAL, not --parent)
+chainctl iam account-associations describe my-org
 ```
 
 ### Custom Assembly workflow

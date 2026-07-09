@@ -145,13 +145,19 @@ chainctl iam role-bindings list --parent my-org -o json
 
 | Command | Description | Subcommands |
 |---------|-------------|-------------|
-| `chainctl auth` | Authentication & token management | `login`, `logout`, `status`, `configure-docker`, `token`, `pull-token`, `delete-account` |
+| `chainctl auth` | Authentication & token management | `login`, `logout`, `status`, `configure-docker`, `configure-npm`, `token` (+ `capabilities`), `pull-token`, `delete-account` |
 | `chainctl config` | Local configuration | `view`, `edit`, `set`, `unset`, `reset`, `save`, `validate` |
-| `chainctl iam` | Identity & access management | `organizations`, `folders`, `identities`, `roles`, `role-bindings`, `invites`, `identity-providers`, `account-associations` |
+| `chainctl iam` | Identity & access management | `organizations`, `folders`, `identities`, `roles`, `role-bindings`, `invites`, `identity-providers`, `external-group-role-mappings`, `account-associations` |
 | `chainctl images` | Container image operations | `list`, `diff`, `history`, `changelog`, `tags`, `repos`, `advisories`, `entitlements`, `helm` |
 | `chainctl events` | Event subscriptions | `subscriptions` (`list`, `create`, `delete`) |
 | `chainctl packages` | Package management | `versions list` |
-| `chainctl libraries` | Library verification | `verify` |
+| `chainctl libraries` | Libraries verification & governance | `verify`, `update-hashes`, `packages` (`list`, `count`, `versions`, `blocked`), `policy`, `entitlements` |
+| `chainctl policies` | Registry pull-time policy governance | `list`, `describe`, `enable`, `disable`, `check`, `binding`, `decision`, `override` |
+| `chainctl actions` | Chainguard Actions product | `entitlements`, `catalog list`, `list`, `discover` |
+| `chainctl agent` | The Guardener (local Dockerfile migration) | `dockerfile` (`build`, `optimize`, `upgrade`, `validate`), `accept-terms` |
+| `chainctl guardener` | Guardener GitHub App integration | `github` (`link`, `unlink`, `status`) |
+| `chainctl skills` | Skills Registry (`skills.cgr.dev`) | `push`, `pull`, `install`, `uninstall`, `list`, `versions`, `describe`, `validate`, `delete`, `entitlements` |
+| `chainctl starter` | Catalog Starter orgs | `init`, `request-access`, `add-images`, `status` |
 | `chainctl update` | Self-update | — |
 | `chainctl version` | Print version | — |
 

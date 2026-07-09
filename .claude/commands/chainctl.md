@@ -1032,7 +1032,7 @@ Configure cloud provider account associations (AWS, Azure, GCP). Cloud-side fede
 
 | Command | Description |
 |---------|-------------|
-| `describe` | Describe cloud provider account associations for a location. **Target is a positional argument** (`ORGANIZATION_NAME|ORGANIZATION_ID|FOLDER_NAME|FOLDER_ID`) — not `--parent`. Caps: `groups.list`, `account_associations.list`. Flags: `--aws`, `--chainguard` (service principal), `--gcp`. |
+| `describe` | Describe cloud provider account associations for a location. **Target is a positional argument** (`ORGANIZATION_NAME|ORGANIZATION_ID|FOLDER_NAME|FOLDER_ID`) — not `--parent`. Caps: `groups.list`, `account_associations.list`. Flags: `--aws`, `--chainguard` (service principal), `--gcp` — **note there is no `--azure` flag on `describe`** even though `set`/`check`/`unset` all support azure. |
 | `check aws\|gcp\|azure` | Check OIDC federation configurations (caps: `groups.list`, `account_associations.list`) |
 | `set aws\|gcp\|azure` | Set cloud provider account associations |
 | `unset aws\|gcp\|azure` | Remove cloud provider account associations (caps: `groups.list`, `account_associations.update`, `account_associations.list`, `account_associations.delete`). Flag: `-y, --yes`. |
@@ -1579,7 +1579,7 @@ Walks a GitHub repo's workflows and composite-action definitions and lists every
 - `--param` — `stringArray`, repeatable; parameter values as `key=value` (the schema comes from `policies describe`). For `STRING_LIST` params, list items are comma-separated within a single `--param` value.
 - `--resources` — `strings`; default `[registry.chainguard.dev/Repo]`. The resource types the binding applies to.
 
-**System policies** ship with the platform (chainctl currently only binds to these, not custom ones). Documented examples: **`no-eol`** (block end-of-life images; no parameters), **`cooldown`** (param `days`, default `7`, range `1`–`365`), and **`support-window`** (param `months`, default `6`, range `1`–`24`). `chainctl policies list` shows what's available to your org; `chainctl policies describe --policy=<name>` prints the parameter schema plus a copyable `enable` invocation. **Recommended rollout:** enable in `DRY_RUN`, review `decision list`, then promote to `ENFORCE`.
+**System policies** ship with the platform (chainctl currently only binds to these, not custom ones). Documented examples: **`no-eol`** (block end-of-life images; no parameters) and **`cooldown`** (parameterized by `days`, default `7`). Other system policies may exist per org — **don't hardcode the parameter names, defaults, or ranges**: run `chainctl policies list` to see what's available and `chainctl policies describe --policy=<name>` for the authoritative parameter schema plus a copyable `enable` invocation. **Recommended rollout:** enable in `DRY_RUN`, review `decision list`, then promote to `ENFORCE`.
 
 #### `chainctl policies decision list`
 A *decision* records the outcome of evaluating one policy against one image digest at pull time. Decisions are recorded for **both `ENFORCE` and `DRY_RUN` bindings**, so you can review what a policy blocked — or *would have* blocked — before promoting it. Each row shows the digest, the policy, the mode, the outcome, and a reason when available.
@@ -1990,6 +1990,15 @@ List the GitHub organizations currently linked to a Chainguard group. **Read-onl
 ```bash
 chainctl guardener github status --group=<GROUP_UIDP>
 ```
+
+### Guardener product & per-repo configuration (`.chainguard/`)
+The `chainctl guardener github link/unlink/status` commands wire up the **Guardener product** (beta) — an AI agent for *continuous maintenance* delivered as a GitHub App, distinct from the local `chainctl agent dockerfile` migration agent. **Linking your Chainguard org to your GitHub org IS the entitlement** — there is no separate `entitlements` step. After linking, Guardener is driven entirely by **opt-in config files committed to a `.chainguard/` directory** on each repo's default branch; a repo with no `.chainguard/` files is left untouched.
+
+Two features ship today:
+- **Actions Security** (`.chainguard/actions.yaml`) — recommends and migrates GitHub Actions to hardened, SHA-pinned equivalents. `enabled: true` posts non-blocking PR recommendation comments; `migrate.enabled: true` opens automated migration PRs on a cadence (`migrate.period`, a Go duration such as `168h`, clamped to a 1-day minimum), with `migrate.ignore.files` / `migrate.ignore.actions` glob excludes.
+- **Commit Verification** (`.chainguard/source.yaml`) — checks that every commit in a PR is signed by an authorized signer. Supports keyless **Sigstore** (gitsign/Fulcio/Rekor: `subjectRegExp`, `issuer`, `ctlog.url`) and static **keys/GPG** (`key.kms`, e.g. GitHub's `web-flow.gpg`). A commit passes if it satisfies **any** listed authority.
+
+Docs: `edu.chainguard.dev/chainguard/guardener/` (getting-started, configuration, actions-security, commit-verification).
 
 ---
 

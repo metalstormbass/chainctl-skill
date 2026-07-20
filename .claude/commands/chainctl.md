@@ -33,7 +33,7 @@ You are a chainctl expert assistant. When the user asks about chainctl, help the
 **Custom Assembly: Always use the file-based workflow.** The interactive editor (`chainctl images repos build edit` without `--file`) opens a terminal editor that does not work in Claude Code. Instead:
 1. **Ask the user what they want to name the YAML config file** before creating it (e.g., `node-custom.yaml`, `my-python-build.yaml`). Always ask — never assume a default name.
 2. Write the YAML config to the file with the user's chosen name.
-3. **Always create a new image — never modify the base image.** `--save-as` is only available on `edit`, not on `apply` ("you can only use this option with the edit subcommand; you cannot create a new image declaratively using the apply subcommand"). Create a new repo non-interactively with: `chainctl images repos build edit --repo=<base-image> --file=<filename>.yaml --parent <org> --save-as=<new-name>` (the `--file` flag skips the interactive editor; no `--yes` flag exists on `edit`). For **updates** to an existing custom image, use `chainctl images repos build apply --repo=<custom-image> --file=<filename>.yaml --parent <org> --yes`.
+3. **Always create a new image — never modify the base image.** `--save-as` creates a new repo from the config and is available on **both `edit` and `apply`** (single-repo runs only — it is not available in batch mode). Create a new repo non-interactively with either `chainctl images repos build apply --repo=<base-image> --file=<filename>.yaml --parent <org> --save-as=<new-name> --yes` or the equivalent `edit --file --save-as` form (the `--file` flag skips the interactive editor; `edit` has no `--yes` flag). For **updates** to an existing custom image, use `chainctl images repos build apply --repo=<custom-image> --file=<filename>.yaml --parent <org> --yes`.
 
 **Custom Assembly constraints to warn about before users invest time:**
 - **Production Containers only** — Custom Assembly is not available on Free/public images.
@@ -101,9 +101,10 @@ chainctl is the CLI for the Chainguard platform. It manages authentication, cont
 | `--force-color` | Force color output even when stdout is not a TTY |
 | `--issuer` | Chainguard STS endpoint URL (e.g. `https://issuer.enforce.dev`) |
 | `--registry` | Chainguard registry URL (default `https://cgr.dev`) |
-| `--log-level` | Log level: `debug`, `info` |
+| `--log-level` | Log level (default `ERROR`; e.g. `debug`, `info`, `warn`, `error`) |
 | `-o, --output` | Output format: `csv`, `env`, `go-template`, `id`, `json`, `markdown`, `none`, `table`, `terse`, `tree`, `wide` |
 | `-v, --v` | Log verbosity level (use `--v 5` for maximum detail when reporting bugs) |
+| `-h, --help` | Help for any command (persistent on every command) |
 
 **Note on `-o, --output`:** The global output-format flag above applies to most commands, but some commands redefine `--output` for their own purpose:
 - `chainctl images diff` — defaults to `json`; accepts `json`, `go-template`, `markdown`. Output format is "subject to change" per the docs — pin parser logic to specific keys, not whole-output shape.
@@ -291,8 +292,9 @@ Create a pull token. Aliases: `make`, `mk`.
 
 **Flags:**
 - `--name` — Optional name for the pull token
+- `--description` — Optional free-text description for the pull token (helps identify it later in `list`)
 - `--parent` — IAM org or folder for the pull token identity
-- `--repository` — Repository type: `oci` (default), `apk`, `java`, `python`, `javascript`. Each value implicitly binds the pull-token identity to the matching role (`registry.pull`, `apk.pull`, `libraries.java.pull`, etc.) so the token "just works" for the chosen ecosystem.
+- `--repository` — Repository type: `oci` (default), `apk`, `java`, `python`, `javascript`, plus the Athena library variants `java_athena`, `python_athena`, `javascript_athena`. Each value implicitly binds the pull-token identity to the matching role (`registry.pull`, `apk.pull`, `libraries.java.pull`, etc.) so the token "just works" for the chosen ecosystem.
 - `--save` — Save the OCI registry pull token to Docker configuration
 - `--ttl` — Time To Live (**default `720h`/30 days**, max `8760h`/1 year)
 
@@ -311,6 +313,9 @@ chainctl auth pull-token create --ttl=24h
 
 # Create a pull token for a particular organization
 chainctl auth pull-token create --parent=my-org
+
+# Create a pull token with a description
+chainctl auth pull-token create --description="CI builds for service-foo"
 ```
 
 #### `chainctl auth pull-token list`
@@ -551,8 +556,7 @@ Create a GitHub Actions identity.
 
 **Flags:**
 - `--github-repo` — Name of a GitHub repo where the action executes (e.g. `my-org/repo-name`)
-- `--github-ref` — Single branch reference for the executing action (optional)
-- `--github-refs` — **Regex** matching multiple refs (e.g. `--github-refs='refs/heads/main|master'`). Use instead of `--github-ref` when you need >1 branch.
+- `--github-ref` — Branch/ref reference for the executing action (optional; e.g. `refs/heads/main`). This is the only ref flag in v0.2.309 — there is no `--github-refs`. For broader matching, create the identity with a claim-pattern identity (`chainctl iam identities create --identity-issuer ... --subject-pattern ...`) instead.
 - `--github-audience` — Audience for the GitHub OIDC token
 - `--role` — Role name or ID to bind to (optional; comma-separated for multiple roles, e.g. `--role=registry.push,registry.pull`)
 - `-n, --name` / `-d, --description` / `--parent` / `-y, --yes`
@@ -965,6 +969,7 @@ Create an identity provider. Aliases: `make`, `mk`.
 - `--oidc-client-id` — Client ID for OIDC
 - `--oidc-client-secret` — Client secret for OIDC
 - `--oidc-additional-scopes` — Additional OIDC scopes to request
+- `--oidc-groups-claim` — OIDC token claim carrying group memberships, used for group-to-role mappings (empty disables group mapping). This is the flag that wires up **External Group Role Mappings** (see below).
 - `--default-role` — Role to grant users on first login
 - `-y, --yes` — Auto-confirm prompts
 
@@ -991,6 +996,7 @@ Update an identity provider.
 - `--oidc-client-id` — Updated client ID
 - `--oidc-client-secret` — Updated client secret
 - `--oidc-additional-scopes` — Updated additional scopes
+- `--oidc-groups-claim` — Updated OIDC token claim carrying group memberships (empty disables group mapping)
 - `--default-role` — Updated default role
 - `-y, --yes` — Auto-confirm prompts
 
@@ -1013,7 +1019,7 @@ Maps **external IdP groups → Chainguard roles** so role assignment becomes dyn
 | Command | Description |
 |---------|-------------|
 | `create` | Map an external group to a role at a scope. Flags: `--external-group-id` (the IdP group identifier / claim value), `--idp` (identity provider UIDP that owns the mapping), `--role` (role UIDP or name to grant), `--scope` (group UIDP — the org root — where the role applies). |
-| `delete` | Delete a mapping. Positional `MAPPING_ID`; flag `-y, --yes`. |
+| `delete` | Delete a mapping. Either pass a positional `MAPPING_ID`, or bulk-delete every mapping for one IdP with `--all --idp <IDP_UIDP>`. Flag `-y, --yes`. Usage: `delete {MAPPING_ID \| --all --idp IDP}`. |
 | `list` | List mappings. Flags: `--parent` (required; org/folder UIDP), `--idp` (narrow to one IdP UIDP). |
 
 ```bash
@@ -1221,7 +1227,8 @@ Create an image repository. Aliases: `make`, `mk`.
 - `--description` — Description for the repo (max 255 characters)
 - `--source` — Repository ID to sync from
 - `--tier` — Catalog tier: `BASE`, `APPLICATION`, `FIPS`, `AI`, `COMMERCIAL`, `DEVTOOLS`. Available on `create` as well as `update`. (The public categories doc only enumerates Base/Application/FIPS/AI; the CLI and API accept the broader superset above, plus `UNKNOWN` in API responses.)
-- `--bundles` — Comma-separated list of bundles to assign
+
+> `--bundles` is **only on `update`**, not `create` (v0.2.309: `create` accepts only `--parent`, `--description`, `--source`, `--tier`). Create the repo first, then assign bundles with `repos update`.
 
 **Organization catalog cap:** Chainguard enforces a **maximum of 2500 container image repositories per organization** (Catalog Pricing limit). Creating a 2501st repo fails server-side.
 
@@ -1295,7 +1302,7 @@ Interactive editor to customize a Chainguard image. Opens your editor with the c
 - `--parent` — Name or ID of the parent location
 - `-f, --file` — Pre-written config file (skips interactive editor)
 - `--save-as` — Create a new repo with the edited config instead of modifying the existing one
-- `--with-certificates` — Certificate file to include. **Repeatable** (not comma-separated) — pass once per file. Currently the only chainctl + API path for managing custom certs (Console UI is not yet GA).
+- `--with-certificates` — Files to read custom certificates from. Accepts a **comma-separated list** and is also **repeatable** (pass the flag once per file) — both forms work, and file-based certs merge with any defined in the YAML manifest. Currently the only chainctl + API path for managing custom certs (Console UI is not yet GA). **Beta:** the custom-certificate capability requires enrollment — contact your Customer Success team to enable it.
 - `--with-runtime-repositories` — Comma-separated list of runtime APK repository URLs to write to `/etc/apk/repositories` in the image. When set, these **replace** the default `virtualapk.cgr.dev` repositories so runtime `apk add` resolves against your own HTTPS mirrors (build-time resolution still uses `apk.cgr.dev`). CLI equivalent of the `contents.runtime_repositories` YAML field.
 
 **Required Capabilities:** `groups.list`, `repo.create`, `repo.update`, `repo.list`
@@ -1322,13 +1329,14 @@ chainctl images repos build edit --file=config.yaml --with-certificates=internal
 ```
 
 #### `chainctl images repos build apply`
-Apply a YAML configuration file non-interactively to an **existing** repo. Ideal for CI/CD pipelines and GitOps workflows. **Cannot create new repos — `--save-as` is `edit`-only per the Custom Assembly docs.** To create a new repo from a file non-interactively, use `chainctl images repos build edit --file --save-as` (no `--yes` flag on `edit`, but `--file` already bypasses the interactive editor).
+Apply a YAML configuration file non-interactively to an existing repo. Ideal for CI/CD pipelines and GitOps workflows. Can also **create a new repo variant** with `--save-as` (single-repo runs only — `--save-as` is **not available in batch mode**), so both `edit --file --save-as` and `apply --file --save-as` can create from a file non-interactively.
 
 **Flags:**
 - `--repo` — `stringArray`, **repeatable**, accepts shell-style wildcards (`*`, `?`, `[abc]`). Fan one config out over many repos in one invocation. Can be specified multiple times.
 - `--parent` — Name or ID of the parent location
 - `-f, --file` — Config file to apply
-- `--with-certificates` — Certificate file to include. The `edit` reference describes it as "can be specified multiple times" (repeatable); the `apply` reference Options block calls it a "Comma separated list" — both forms are accepted by the underlying cobra `stringSlice`.
+- `--save-as` — Create a new repo with the applied configuration instead of updating the existing one. **Single-repo only — not available in batch mode.**
+- `--with-certificates` — Files to read custom certificates from. Accepts a **comma-separated list** and is also **repeatable** (pass once per file) — both forms work on `apply` exactly as on `edit`. **Beta:** requires enrollment (contact Customer Success).
 - `--with-runtime-repositories` — Comma-separated list of runtime APK repository URLs written to `/etc/apk/repositories` (replaces the default `virtualapk.cgr.dev` entries). Same semantics as on `edit`. **At least one of `--file`, `--with-certificates`, or `--with-runtime-repositories` is required** (multiple are merged).
 - `--dry-run` — Print the diff without applying. **Exits non-zero if changes would be made** — useful for CI drift detection.
 - `-y, --yes` — Auto-confirm (for CI/CD)
@@ -1342,8 +1350,8 @@ Apply a YAML configuration file non-interactively to an **existing** repo. Ideal
 # Apply config from a file (update existing repo)
 chainctl images repos build apply --repo=my-custom-python --file=config.yaml
 
-# Create a new repo from a file (uses edit, not apply — --save-as is edit-only)
-chainctl images repos build edit --repo=python --file=config.yaml --save-as=my-custom-python --parent=my-org
+# Create a new repo variant from a file (--save-as works on both edit and apply; single-repo only)
+chainctl images repos build apply --repo=python --file=config.yaml --save-as=my-custom-python --parent=my-org
 
 # CI/CD: apply with auto-confirm
 chainctl images repos build apply --repo=my-custom-python --file=config.yaml --yes
@@ -1621,7 +1629,7 @@ chainctl policies override list --parent=engineering
 | `push [<path>]` | Package a directory containing `SKILL.md` and publish. Flags: `--dry-run`, `-g, --group` (org; defaults to current context), `-t, --tag` (default `"latest"`). |
 | `pull <ref> [<dir>]` | Download a published skill. `<ref>` = `org/name[:tag]`; `<dir>` defaults to `./`. Flag: `--force`. |
 | `install <ref>` | Download AND install into agent directories — writes a shared canonical copy to `.agents/skills/` and creates agent-specific symlinks. Flags: `-a, --agent stringArray` (repeatable target list; `--agent '*'` for all), `--copy` (per-agent copies instead of symlinks), `--global` (install to `~/` instead of project-local). |
-| `uninstall <name>` | Local-only (does NOT touch the registry). `<name>` is the skill name (no org/tag). Flags: `-a, --agent stringArray`, `--global`, `-y, --yes`. |
+| `uninstall <name>` | Local-only (does NOT touch the registry). `<name>` is the skill name (no org/tag). Flags: `-a, --agent stringArray`, `--global`, `-y, --yes`. **By default removes the project-local copy only**; if a global copy also exists it is left in place and a warning is printed — re-run with `--global` to remove it. |
 | `list` | List skills published by an org. Flags: `-g, --group`, `-r, --recursive` (recurse into nested folders and list every skill by its full path). |
 | `versions <ref>` | List all published tags for `<ref>` = `org/name` (no tag). |
 | `describe <ref>` | Show metadata for a published skill. |
@@ -1642,8 +1650,8 @@ chainctl policies override list --parent=engineering
 | Command | Description |
 |---------|-------------|
 | `init` | Interactive — authenticates with a supported IdP, registers a Chainguard identity for the user's email, and creates a new starter org tied to the email domain. **Business email only** (Gmail/Yahoo refused). Auth must be email+password OR Google (the latter only if the business uses Google Workspace on its own domain). If the org already exists, fall back to `chainctl starter request-access`. |
-| `request-access` | Sends an access request to the existing starter org for the authenticated email's domain. **Returns identical response whether or not a matching org exists** (privacy by design — don't infer existence from the response). |
-| `add-images IMAGE_NAME [IMAGE_NAME ...]` | Adds catalog images to the caller's auto-discovered starter org. Total cap is server-enforced. |
+| `request-access` | Sends an access request to the existing starter org for the authenticated email's domain. **You must be authenticated as a Chainguard identity first** (e.g. `chainctl auth login`) — the candidate org is derived from the email domain on your session. **Returns identical response whether or not a matching org exists** (privacy by design — don't infer existence from the response). |
+| `add-images IMAGE_NAME [IMAGE_NAME ...]` | Adds catalog images to the caller's auto-discovered starter org. Images are resolved against the catalog by **exact name match**, and the server picks the active starter entitlement with remaining capacity. Total cap is server-enforced. |
 | `status` | Shows registry path, account provisioning status, image quota usage, and per-image readiness: `INITIALIZING` until the catalog syncer has created the repo AND mirrored ≥1 tag, `READY` afterwards. |
 
 ---
@@ -1660,6 +1668,8 @@ chainctl policies override list --parent=engineering
 Analyze artifacts to determine how much was built from source by Chainguard, using signature-based binary identification with a checksum fallback. Aliases: `check`.
 
 **Supports:** directories, archives, packages, container images (registry refs, local images, `docker-archive:` format). Binary formats: **JAR, WAR, EAR, ZIP, TAR, WHL, APK, npm `.tgz`, container images**. Package-manager caches auto-detected: npm (`_cacache/index-v5/`), pnpm v10+ (`v10/index/`, `v11/index/` — **pnpm v9 and earlier are not supported** because v9 doesn't record the tarball hash in the index path), Yarn Classic (`yarn:` prefix; alt cache path: `chainctl libraries verify yarn:~/Library/Caches/Yarn/v6`).
+
+**Java repository resolution:** remediated (CVE-patched) Java artifacts — whose versions carry a `-0.cgr.<N>` suffix (e.g. `3.5.0-0.cgr.2`) — are resolved from the **`java-remediated`** repository; all other Java artifacts resolve from the **`java`** repository.
 
 **Path prefixes:** `remote:<url>` analyzes a remote artifact without downloading (anonymous/public URLs only — no authenticated repo access); `localhost/<image>` analyzes a local container image (distinct from `docker-archive:`); `./node_modules` works **only if `.package-lock.json` is present** in the directory (npm v7+; images built before that or with the lockfile stripped can't be verified through this path).
 
@@ -1810,7 +1820,7 @@ Delete an ecosystem library entitlement. Aliases: `rm`.
 **Required Capabilities:** `groups.list`, `libraries.entitlements.list`, `libraries.entitlements.delete`
 
 ### `chainctl libraries policy` — library governance (chainctl ≥ v0.2.291)
-Controls **which upstream packages your org can pull**. A *policy* configures automatic gates (cooldown, malware scanning) plus explicit block/allow lists; a *binding* activates a policy for an `(organization, ecosystem)` pair in `ENFORCE` or `DRY_RUN` mode. **Distinct from container-image `chainctl policies`** (that governs image pulls). Ecosystems are `JAVA`, `PYTHON`, `JAVASCRIPT`. A newly created policy is **inactive** until you `enable` it (or create a binding). `list` shows both `SYSTEM` and `CUSTOM` policies.
+Controls **which upstream packages your org can pull**. A *policy* configures automatic gates (cooldown, malware scanning) plus explicit block/allow lists; a *binding* activates a policy for an `(organization, ecosystem)` pair in `ENFORCE` or `PREVIEW` mode. **Distinct from container-image `chainctl policies`** (that governs image pulls). Ecosystems are `JAVA`, `PYTHON`, `JAVASCRIPT`. A newly created policy is **inactive** until you `enable` it (or create a binding). `list` shows both `SYSTEM` and `CUSTOM` policies.
 
 | Command | Description |
 |---------|-------------|
@@ -1820,7 +1830,7 @@ Controls **which upstream packages your org can pull**. A *policy* configures au
 | `describe POLICY` | Show the full policy incl. every block/allow entry. |
 | `list` | List SYSTEM and CUSTOM policies. Flag: `--parent`. |
 | `enable --policy POLICY` | Create/activate a binding. Default `--mode ENFORCE`. |
-| `disable --policy POLICY` | Delete the binding(s). If `--mode` omitted, removes both ENFORCE and DRY_RUN bindings. |
+| `disable --policy POLICY` | Delete the binding(s). If `--mode` omitted, removes both ENFORCE and PREVIEW bindings. |
 | `binding create/delete/list/update` | Lower-level binding management (the libraries binding **has an `update`**, unlike the image-`policies` binding). |
 
 **`create` / `update` flags:**
@@ -1833,7 +1843,7 @@ Controls **which upstream packages your org can pull**. A *policy* configures au
 
 **purl format by ecosystem:** `pkg:pypi/<name>`, `pkg:npm/<name>`, `pkg:npm/%40<scope>/<name>` (scoped), `pkg:maven/<group>/<artifact>`. Append `@<version>` to scope to one version (e.g. `pkg:npm/lodash@4.17.20`).
 
-**`enable` / `disable` / `binding create` flags:** `--policy`, `--parent`, `--ecosystem` (`JAVA|PYTHON|JAVASCRIPT`), `--mode` (`ENFORCE|DRY_RUN`, default `ENFORCE`). `binding delete BINDING_ID` and `binding update BINDING_ID --mode ...` take the binding ID positionally.
+**`enable` / `disable` / `binding create` flags:** `--policy`, `--parent`, `--ecosystem` (`JAVA|PYTHON|JAVASCRIPT`), `--mode` (`ENFORCE|PREVIEW`, default `ENFORCE`). `binding delete BINDING_ID` and `binding update BINDING_ID --mode ...` take the binding ID positionally.
 
 **Examples:**
 ```bash
@@ -1868,14 +1878,14 @@ chainctl libraries packages versions <PACKAGE_ID>
 ### `chainctl libraries packages blocked`
 List packages withheld by an active Libraries policy. Defaults to `ENFORCE`-mode events from the **last 30 days**.
 
-**Flags:** `--parent` (scope to an org), `--ecosystem` (`JAVA|PYTHON|JAVASCRIPT`), `--mode` (`ENFORCE|DRY_RUN`, default `ENFORCE`), `--package` (exact name match, case-insensitive).
+**Flags:** `--parent` (scope to an org), `--ecosystem` (`JAVA|PYTHON|JAVASCRIPT`), `--mode` (`ENFORCE|PREVIEW`, default `ENFORCE`), `--package` (exact name match, case-insensitive).
 
 ```bash
 # What did the policy block in JavaScript recently?
 chainctl libraries packages blocked --parent=my-org --ecosystem=JAVASCRIPT
 
-# Was a specific package blocked (incl. dry-run)?
-chainctl libraries packages blocked --package=left-pad --mode=DRY_RUN
+# Was a specific package blocked (incl. preview mode)?
+chainctl libraries packages blocked --package=left-pad --mode=PREVIEW
 ```
 
 ### JavaScript Malware Block List API (`/-/api/malware`)
@@ -2630,8 +2640,8 @@ chainctl iam account-associations describe my-org
 # Edit an image interactively (opens editor with YAML config)
 chainctl images repos build edit --repo=my-custom-python --parent my-org
 
-# Create a new variant of an image (edit, not apply — --save-as is edit-only)
-chainctl images repos build edit --repo=python --file=config.yaml --save-as=my-custom-python --parent my-org
+# Create a new variant of an image (--save-as works on edit and apply; single-repo only)
+chainctl images repos build apply --repo=python --file=config.yaml --save-as=my-custom-python --parent my-org --yes
 
 # Apply config from file to an EXISTING repo (CI/CD)
 chainctl images repos build apply --repo=my-custom-python --file=config.yaml --yes

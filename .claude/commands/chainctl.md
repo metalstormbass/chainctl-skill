@@ -5,7 +5,7 @@ allowed-tools: [Bash, Read, Grep, Glob, WebFetch]
 
 You are a chainctl expert assistant. When the user asks about chainctl, help them construct the correct command, explain flags, troubleshoot errors, or accomplish their goal on the Chainguard platform.
 
-**Always use long timeouts for chainctl commands.** Many chainctl operations are slow. Use `timeout: 300000` (5 minutes) for most commands. For `chainctl agent dockerfile` (The Guardener) commands use `timeout: 1800000` (30 minutes) — migrations can take 5–30+ minutes; a 10-minute timeout is often too short. For `chainctl libraries verify` use `timeout: 600000` (10 minutes). Never use the default 2-minute timeout for chainctl.
+**Always use long timeouts for chainctl commands.** Many chainctl operations are slow. Use `timeout: 300000` (5 minutes) for most commands. For `chainctl agent dockerfile` (The Guardener) commands use `timeout: 1800000` (30 minutes) — migrations can take 5–30+ minutes; a 10-minute timeout is often too short. Use the same 30-minute timeout for `chainctl guardener github migrate create` (it waits on a long-running server-side migration by default; or pass `--wait=false` and poll with `migrate get`). For `chainctl libraries verify` use `timeout: 600000` (10 minutes). Never use the default 2-minute timeout for chainctl.
 
 **Always check for updates first, then log in.** Before doing anything else, run `chainctl update` to ensure the latest version is installed, and as soon as it completes kick off `chainctl auth login` (pass `--org-name`, `--headless`, `--identity`, `--identity-token`, `--social-login` as appropriate for the environment). Do this once at the start of every conversation — don't wait for the first authenticated command, and don't gate the login on `chainctl auth status`.
 
@@ -94,7 +94,7 @@ certificates:
 
 # chainctl — Chainguard Control CLI
 
-chainctl is the CLI for the Chainguard platform. It manages authentication, container images, Custom Assembly, IAM (organizations, folders, identities, roles, role-bindings, identity providers, account associations, external group role mappings), registry policies (`chainctl policies`), events, packages, libraries (verification, entitlements, and library governance policies), agents (The Guardener), Chainguard Actions (entitlements, catalog, discover), the skills registry (`skills.cgr.dev`), Catalog Starter org self-service, shell completion, and local configuration.
+chainctl is the CLI for the Chainguard platform. It manages authentication, container images, Custom Assembly, IAM (organizations, folders, identities, roles, role-bindings, identity providers, account associations, external group role mappings), registry policies (`chainctl policies`), events, packages, libraries (verification, entitlements, and library governance policies), agents (The Guardener local Dockerfile migration), the Guardener GitHub App integration (`chainctl guardener github`), Chainguard Actions (entitlements, catalog, discover), the skills registry (`skills.cgr.dev`), Catalog Starter org self-service, shell completion, and local configuration.
 
 ## Global Flags (available on all commands)
 
@@ -425,6 +425,7 @@ Built-in roles cannot be edited or deleted. Custom role changes take effect imme
 | `guardener.user` | Minimum role to run `chainctl agent dockerfile` sessions after terms are accepted. |
 | `guardener.association.manage` | Link/unlink a GitHub org to a Chainguard group via `chainctl guardener github` (the Guardener GitHub App integration). Held by `owner`. |
 | `guardener.association.list` | Read-only: list the GitHub orgs linked to a group via `chainctl guardener github status` (no GitHub authorization/browser flow). |
+| `guardener.actions.migrate` | Enqueue/inspect on-demand GitHub Actions migrations (`chainctl guardener github migrate create/get`). |
 | `guardener.dfc.convert` | Run the `dfc` (Dockerfile Converter) conversion path. |
 | `policies.override.create` | Create per-artifact registry-policy overrides (`chainctl policies override create`) — separate from generic edit capabilities; typically owner-only. |
 
@@ -786,7 +787,7 @@ chainctl iam identities update my-identity --subject-pattern="^\d{4}$" --audienc
 
 | Command | Description |
 |---------|-------------|
-| `list` | List IAM roles (caps: `groups.list`, `roles.list`). Flags: `--capabilities`, `--managed` (built-in only), `--name`, `--parent` |
+| `list` | List IAM roles (caps: `groups.list`, `roles.list`). Flags: `--capabilities`, `--managed` (built-in only), `--name` (**exact** name match, not substring), `--parent` |
 | `create` | Create a custom IAM role (caps: `groups.list`, `roles.create`) |
 | `delete` | Delete a custom IAM role (caps: `groups.list`, `roles.list`, `roles.delete`). Built-in roles cannot be deleted. |
 | `update` | Update a custom IAM role |
@@ -917,7 +918,7 @@ Accept an invite with `chainctl auth login --invite-code <CODE>`.
 |---------|-------------|
 | `list` | List organization and folder invites (caps: `groups.list`, `group_invites.list`). Flag: `--parent`. |
 | `create` | Generate an invite code to register identities |
-| `delete` | Delete invite codes (caps: `groups.list`, `group_invites.list`, `group_invites.delete`). Flag `--expired` deletes all expired invite codes. |
+| `delete` | Delete invite codes: `delete {INVITE_ID... \| --expired} [--yes]` — accepts **multiple invite IDs** positionally, or `--expired` to delete all expired codes (caps: `groups.list`, `group_invites.list`, `group_invites.delete`). |
 
 #### `chainctl iam invites create`
 Generate an invite code. Aliases: `make`, `mk`.
@@ -965,10 +966,22 @@ chainctl iam invites create my-org-name --single-use
 
 | Command | Description |
 |---------|-------------|
-| `list` | List identity providers (caps: `groups.list`, `identity_providers.list`). Flag: `--parent`. |
-| `create` | Create a customer managed identity provider |
+| `list` | List identity providers in a location **and its descendants** (caps: `groups.list`, `identity_providers.list`). Flag: `--parent`. |
+| `create` | Create a customer managed identity provider. Required: `--parent` (org only), `--oidc-issuer`, `--oidc-client-id`, `--default-role`, and one of `--oidc-client-secret` \| `--oidc-pkce-enabled`. |
 | `delete` | Delete an identity provider (caps: `groups.list`, `identity_providers.list`, `identity_providers.delete`) |
 | `update` | Update an identity provider |
+| `scim` | Manage **SCIM provisioning** for an identity provider (see below) |
+
+#### `chainctl iam identity-providers scim` — SCIM provisioning
+Manage SCIM provisioning (automated user/group sync from the IdP) for a customer-managed identity provider. All subcommands take the identity provider **positionally** (`IDENTITY_PROVIDER` = name or UIDP).
+
+| Command | Description |
+|---------|-------------|
+| `scim enable IDENTITY_PROVIDER` | Enable SCIM provisioning. Provisioning stays **off** until explicitly enabled — generating a token alone is not enough. |
+| `scim disable IDENTITY_PROVIDER` | Disable SCIM provisioning. Flag: `-y, --yes`. |
+| `scim token generate IDENTITY_PROVIDER [--output=json]` | Issue the SCIM bearer token. **The plaintext token is shown exactly once**; only its SHA-256 digest is stored. If a token already exists (even expired/revoked), use `regenerate` instead. Flags: `--expires-in` (duration; max **2 years**, unset defaults to **1 year**, e.g. `--expires-in 8760h`), `--never-expires` (explicitly issue without planned expiry). |
+| `scim token regenerate IDENTITY_PROVIDER [--output=json]` | Replace the token whether the current one is live, expired, or revoked. A live token keeps authenticating for the **overlap window** while you reconfigure the IdP connector. Flags: `--expires-in`, `--never-expires`, `--overlap` (duration; **max 24h**, unset defaults to **1 hour**, `0` cuts over immediately). **If the current token may be exposed, don't rely on the overlap** — `revoke` it or regenerate with `--overlap 0`. |
+| `scim token revoke IDENTITY_PROVIDER [--yes]` | Immediately invalidate **all** SCIM bearer tokens (current + regeneration-overlap). Inbound provisioning stops at once until a new token is issued. Flag: `-y, --yes`. |
 
 #### `chainctl iam identity-providers create`
 Create an identity provider. Aliases: `make`, `mk`.
@@ -1038,9 +1051,9 @@ Maps **external IdP groups → Chainguard roles** so role assignment becomes dyn
 
 | Command | Description |
 |---------|-------------|
-| `create` | Map an external group to a role at a scope. Flags: `--external-group-id` (the IdP group identifier / claim value), `--idp` (identity provider UIDP that owns the mapping), `--role` (role UIDP or name to grant), `--scope` (group UIDP — the org root — where the role applies). |
-| `delete` | Delete a mapping. Either pass a positional `MAPPING_ID`, or bulk-delete every mapping for one IdP with `--all --idp <IDP_UIDP>`. Flag `-y, --yes`. Usage: `delete {MAPPING_ID \| --all --idp IDP}`. |
-| `list` | List mappings. Flags: `--parent` (required; org/folder UIDP), `--idp` (narrow to one IdP UIDP). |
+| `create` | Map an external group to a role at a scope. Flags: `--external-group-id` (the IdP group identifier / claim value), `--idp` (identity provider **name or UIDP** that owns the mapping), `--role` (role name or UIDP to grant), `--scope` (organization or group **name or UIDP** where the role applies). |
+| `delete` | Delete a mapping. Either pass a positional `MAPPING_ID`, or bulk-delete every mapping for one IdP with `--all --idp <IDP>` (name or UIDP). Flag `-y, --yes`. Usage: `delete {MAPPING_ID \| --all --idp IDP}`. |
+| `list` | List mappings. Flags: `--parent` (required; org/folder name or UIDP), `--idp` (narrow to one IdP, name or UIDP). |
 
 ```bash
 # Grant the "viewer" role to everyone in the IdP group "platform-eng"
@@ -2016,9 +2029,13 @@ curl -H "Authorization: Bearer $(chainctl auth token)" \
 
 ## guardener — Guardener GitHub App integration
 
-`chainctl guardener` manages the **Guardener GitHub App integration** — the *hosted* path that lets Chainguard's Guardener open automated Dockerfile-migration PRs against your GitHub repos. **This is distinct from `chainctl agent dockerfile`** (the local CLI Guardener that runs on your machine). The integration works by linking a GitHub organization to a Chainguard group so the App is authorized to act on that org's behalf. The Guardener GitHub App must already be **installed on the GitHub org** before you can link it.
+`chainctl guardener` manages the **Guardener GitHub App integration** — the *hosted* Guardener (beta) that continuously maintains your GitHub repos: it recommends and migrates GitHub Actions to hardened, SHA-pinned Chainguard equivalents and verifies commit signatures on PRs. **This is distinct from `chainctl agent dockerfile`** (the local CLI Guardener that migrates Dockerfiles on your machine — the GitHub App does NOT open Dockerfile-migration PRs). The integration works by linking a GitHub organization to a Chainguard group so the App is authorized to act on that org's behalf. The Guardener GitHub App must already be **installed on the GitHub org** before you can link it (GitHub App page → Install/Configure → pick the org → grant All or selected repositories; the selection can be changed later in GitHub org settings).
 
-**New capability:** `guardener.association.manage` — required to link/unlink orgs (in addition to the existing `guardener.admin` / `guardener.user` roles for running migrations). `owner` holds it by default.
+**GitHub permissions the App requests** (minimum needed): Contents (read & write — read workflow/signature/config files, push migration PR branches), Pull requests (read & write — PR events, diffs, review comments), Workflows (read & write — update workflow files during Actions migration), Checks (write — publish check runs with results). Installing the App alone changes nothing in any repo; every feature is opt-in via `.chainguard/` config files.
+
+**Capabilities:** `guardener.association.manage` — link/unlink orgs (held by `owner`); `guardener.association.list` — read-only `status`; `guardener.actions.migrate` — enqueue/inspect on-demand Actions migrations. The `guardener.admin` / `guardener.user` roles remain for local `chainctl agent dockerfile` sessions.
+
+**`--group` takes the org name.** The `chainctl guardener` commands identify the Chainguard organization by its **group name** — no UIDP lookup needed (UIDPs also accepted). Omit `--group` and chainctl prompts you to pick interactively.
 
 ### `chainctl guardener github link`
 Link a GitHub organization to a Chainguard group. You must be an **owner of both** the Chainguard group (holding `guardener.association.manage`) **and** the GitHub organization. A browser window opens to authorize with GitHub.
@@ -2028,8 +2045,10 @@ Link a GitHub organization to a Chainguard group. You must be an **owner of both
 - `--group` — Name or UIDP of the Chainguard group to link to. Prompts interactively if omitted.
 - `--port` — Local loopback port for the GitHub OAuth callback (default `8989`).
 
+**Linking IS the entitlement** — there is no separate entitlement step for the Guardener. To link your own **user account** instead of an org, pass your GitHub username to `--github-org`.
+
 ```bash
-chainctl guardener github link --github-org=my-gh-org --group=<GROUP_UIDP>
+chainctl guardener github link --github-org=my-gh-org --group=my-org
 ```
 
 ### `chainctl guardener github unlink`
@@ -2039,9 +2058,11 @@ Unlink a GitHub organization from its Chainguard group.
 
 **Behavior nuance:** if `--group` is set and you hold `guardener.association.manage` on that group, the org is unlinked using your Chainguard credentials with **no browser**. Otherwise it falls back to the GitHub OAuth flow (which proves you own the org). Either way you must be logged in to Chainguard.
 
+**Unlinking stops the Guardener from acting** on the org's repos; to fully remove it, also uninstall the GitHub App from the GitHub org settings.
+
 ```bash
 # Fast path (Chainguard creds, no browser) when you hold guardener.association.manage
-chainctl guardener github unlink --github-org=my-gh-org --group=<GROUP_UIDP>
+chainctl guardener github unlink --github-org=my-gh-org --group=my-org
 ```
 
 ### `chainctl guardener github status`
@@ -2050,17 +2071,67 @@ List the GitHub organizations currently linked to a Chainguard group. **Read-onl
 **Flags:** `--group` — Name or UIDP of the Chainguard group to list.
 
 ```bash
-chainctl guardener github status --group=<GROUP_UIDP>
+chainctl guardener github status --group=my-org
 ```
 
-### Guardener product & per-repo configuration (`.chainguard/`)
-The `chainctl guardener github link/unlink/status` commands wire up the **Guardener product** (beta) — an AI agent for *continuous maintenance* delivered as a GitHub App, distinct from the local `chainctl agent dockerfile` migration agent. **Linking your Chainguard org to your GitHub org IS the entitlement** — there is no separate `entitlements` step. After linking, Guardener is driven entirely by **opt-in config files committed to a `.chainguard/` directory** on each repo's default branch; a repo with no `.chainguard/` files is left untouched.
+### `chainctl guardener github migrate`
+Trigger a repository's GitHub Actions migration **on demand** — the CLI counterpart to the cadence-driven migration PR the App maintains via `.chainguard/actions.yaml`. Subcommands: `create`, `get`. Both require the **`guardener.actions.migrate`** capability on the group that owns the repo's GitHub App installation. **Not in the published docs** — verified via CLI `--help` (v0.2.325).
 
-Two features ship today:
-- **Actions Security** (`.chainguard/actions.yaml`) — recommends and migrates GitHub Actions to hardened, SHA-pinned equivalents. `enabled: true` posts non-blocking PR recommendation comments; `migrate.enabled: true` opens automated migration PRs on a cadence (`migrate.period`, a Go duration such as `168h`, clamped to a 1-day minimum), with `migrate.ignore.files` / `migrate.ignore.actions` glob excludes.
-- **Commit Verification** (`.chainguard/source.yaml`) — checks that every commit in a PR is signed by an authorized signer. Supports keyless **Sigstore** (gitsign/Fulcio/Rekor: `subjectRegExp`, `issuer`, `ctlog.url`) and static **keys/GPG** (`key.kms`, e.g. GitHub's `web-flow.gpg`). A commit passes if it satisfies **any** listed authority.
+#### `chainctl guardener github migrate create REPOSITORY`
+Enqueue a GitHub Actions migration. Opens (or updates) a **single PR** replacing upstream GitHub Actions with their Chainguard equivalents at version-equivalent tags. Returns a long-running operation; **waits for completion by default** and prints the resulting PR. `REPOSITORY` is a full URL (`https://github.com/owner/repo`) or the `owner/repo` shorthand — **only github.com is supported today**.
 
-Docs: `edu.chainguard.dev/chainguard/guardener/` (getting-started, configuration, actions-security, commit-verification).
+**Flags:**
+- `--group` — Name or UIDP of the group that owns the installation. Prompts interactively if omitted.
+- `--wait` — Wait for the migration to complete before returning (default true). Pass `--wait=false` to return immediately with the operation name.
+- `--timeout` — How long to wait when `--wait` is set.
+
+```bash
+# Migrate a repo's workflows and wait for the PR
+chainctl guardener github migrate create owner/repo --group=my-org
+
+# Fire and forget; check on it later with `migrate get`
+chainctl guardener github migrate create https://github.com/owner/repo --group=my-org --wait=false
+```
+
+#### `chainctl guardener github migrate get OPERATION`
+Show the state of a migration operation returned by `migrate create`. `OPERATION` is the operation name (`operations/migrate/{group}/{id}`); the owning group is derived from the name unless `--group` is given. Pass `--wait` to poll until completion (`--timeout` bounds the poll).
+
+### Guardener configuration (`.chainguard/`)
+After linking, Guardener is driven entirely by **opt-in config files committed to a `.chainguard/` directory**, read from the repo's **default branch**; a repo with no `.chainguard/` files is left untouched even with the App installed and the org linked. Config changes ship like code: edit on a branch, PR, merge — the Guardener picks up the new config for subsequent events.
+
+**Org-level defaults via the `.github` repository:** instead of per-repo files, commit `.chainguard/<feature>.yaml` to the default branch of your org's special `.github` repository (the App needs access to it — install on All repositories or add it explicitly) and every repo the Guardener can access inherits it. **Per-repo config wins per feature**: a repo with its own `.chainguard/<feature>.yaml` ignores the org default for that feature; a repo without one falls back to the org default; a feature configured in neither place stays disabled.
+
+Two features ship today (more planned, each with its own `.chainguard/` file):
+- **Hardened Actions** (`.chainguard/actions.yaml`) — recommends and migrates GitHub Actions to hardened, SHA-pinned equivalents (protects against tag-moving supply chain attacks). Two **independent** modes: `enabled: true` (default `true`) posts non-blocking PR recommendation comments with one-click suggestion blocks on PRs that touch workflows; `migrate.enabled: true` (default `false`) opens and maintains a **single** automated migration PR on a cadence (`migrate.period`, Go duration string, default `24h`, **clamped to a 1-day minimum**). `migrate.ignore.files` (matched under `.github/workflows/`) and `migrate.ignore.actions` take glob patterns to exclude workflow files / upstream actions.
+- **Commit Verification** (`.chainguard/source.yaml`) — checks that every commit in a PR is cryptographically signed by an authorized signer. Supports keyless **Sigstore** (verified with gitsign: `keyless.url` = Fulcio, `keyless.identities[]` with `subject`/`subjectRegExp` + `issuer`/`issuerRegExp`, `ctlog.url` = Rekor) and static **keys/GPG** (`key.kms` — verified directly against the key material, no gitsign; e.g. GitHub's web-flow merge key `https://github.com/web-flow.gpg`). A commit passes if it satisfies **any** authority under `spec.authorities`.
+
+```yaml
+# .chainguard/actions.yaml — PR recommendations + weekly auto-migration PR
+enabled: true
+migrate:
+  enabled: true
+  period: "168h"
+  ignore:
+    files: ["release.yml"]
+    actions: ["actions/*"]
+```
+
+```yaml
+# .chainguard/source.yaml — accept @example.com Sigstore signers OR GitHub web-flow merges
+spec:
+  authorities:
+    - keyless:
+        url: https://fulcio.sigstore.dev
+        identities:
+          - subjectRegExp: .+@example.com$
+            issuer: https://accounts.google.com
+      ctlog:
+        url: https://rekor.sigstore.dev
+    - key:
+        kms: https://github.com/web-flow.gpg
+```
+
+Docs: `edu.chainguard.dev/chainguard/guardener/github/` (getting-started, configuration, actions-security, commit-verification).
 
 ---
 
@@ -2706,6 +2777,22 @@ chainctl images repos build list --repo=my-custom-python --parent my-org
 
 # Check build logs
 chainctl images repos build logs --repo=my-custom-python --parent my-org
+```
+
+### Guardener GitHub App setup (hosted Guardener)
+```bash
+# 1. Install the Guardener GitHub App on the GitHub org (browser: GitHub App page → Install)
+# 2. Link the GitHub org to your Chainguard org (browser opens to authorize GitHub)
+chainctl guardener github link --github-org=my-gh-org --group=my-org
+
+# 3. Verify the link
+chainctl guardener github status --group=my-org
+
+# 4. Opt in per repo (or org-wide via the .github repo): commit .chainguard/actions.yaml
+#    and/or .chainguard/source.yaml to the default branch
+
+# 5. Optional: trigger an Actions migration PR on demand instead of waiting for the cadence
+chainctl guardener github migrate create owner/repo --group=my-org
 ```
 
 ### Dockerfile migration (The Guardener)

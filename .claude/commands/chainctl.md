@@ -42,7 +42,7 @@ You are a chainctl expert assistant. When the user asks about chainctl, help the
 - **Permissions** — needs `repo.update` (edit-in-place) and also `repo.create` when using `--save-as`. Only the built-in `owner` role has both by default.
 - **Build timeout ~1 hour**; normal builds complete in <20 minutes. Success/failure isn't known until the build finishes — use `chainctl images repos build list` and `logs` to check.
 - **Reserved prefixes**: `CHAINGUARD_` (env), `dev.chainguard` (annotations), and `org.opencontainers` (annotations) cannot be used.
-- **Custom certificates** — available to any org with Production Containers access via chainctl and the API (Console UI not yet GA). Limit: **50 KB total inline PEM** across all certs (contact your account team for higher limits); **PEM-encoded x509v3 only**; private keys are rejected. Each `certificates.additional[]` entry must contain exactly one PEM block — bundle separate certs as separate list entries. Certs are written to `/etc/ssl/certs/ca-certificates.crt` and to `/usr/local/share/ca-certificates/<name>.crt` (filename = the entry's `name:`), and to the Java truststore at `/etc/ssl/certs/java/cacerts` if present. They appear in the provenance and apko-configuration attestations but not the SBOM. Chainguard also publishes managed bundle packages (`ca-certificates-aws-rds-global`, `ca-certificates-aws-rds-govcloud-global`, `ca-certificates-dod-eca`, `ca-certificates-dod-wcf`) that can be added via `contents.packages` instead of inlining. Verify inclusion without running the container: `crane export <image> - | tar -xOf - etc/ssl/certs/ca-certificates.crt`.
+- **Custom certificates** — available to any org with Production Containers access via chainctl and the API (Console UI not yet GA). Limit: **50 KB total inline PEM** across all certs (contact your account team for higher limits); **PEM-encoded x509v3 only**; private keys are rejected. Each `certificates.additional[]` entry must contain exactly one PEM block — bundle separate certs as separate list entries. Certs are written to `/etc/ssl/certs/ca-certificates.crt` and to `/usr/local/share/ca-certificates/<name>.crt` (filename = the entry's `name:`), and to the Java truststore at `/etc/ssl/certs/java/cacerts` if present. They appear in the provenance and apko-configuration attestations but not the SBOM. Chainguard also publishes managed bundle packages (`ca-certificates-aws-rds-global`, `ca-certificates-aws-rds-govcloud-global`, `ca-certificates-dod-eca`, `ca-certificates-dod-wcf`, `ca-certificates-mozilla-eol-20251003` — obsolete CAs removed by Mozilla in 2026, for legacy compatibility) that can be added via `contents.packages` instead of inlining. Verify inclusion without running the container: `crane export <image> - | tar -xOf - etc/ssl/certs/ca-certificates.crt`.
 - **Privacy notice** — do not put personal data or regulated data into Custom Assembly YAML; it's subject to Chainguard's Privacy Notice.
 
 Use this template as a starting point when the user wants to customize an image:
@@ -444,7 +444,7 @@ Built-in roles cannot be edited or deleted. Custom role changes take effect imme
 | `libraries.java.pull` / `libraries.python.pull` / `libraries.javascript.pull` | Pull from that ecosystem |
 | `libraries.{java,python,javascript}.pull_token_creator` | Create pull tokens for that ecosystem (same `identity.list`-omission rationale as `registry.pull_token_creator`) |
 | `guardener.admin` | Accept Guardener legal terms for the org (required once before anyone in the org can run sessions). Also has the capabilities of `guardener.user`. |
-| `guardener.user` | Minimum role to run `chainctl agent dockerfile` sessions after terms are accepted (covers Guardener conversion, terms lookup, and **registry pull** — a Guardener-only user can pull images). |
+| `guardener.user` | Minimum role to run `chainctl agent dockerfile` sessions after terms are accepted (covers Guardener conversion, terms lookup, and **registry pull** — a Guardener-only user can pull images). Both `guardener.user` and `guardener.admin` also include `guardener.actions.migrate` (on-demand GitHub Actions migrations). |
 | `guardener.association.manage` | Link/unlink a GitHub org to a Chainguard group via `chainctl guardener github` (the Guardener GitHub App integration). Held by `owner`. |
 | `guardener.association.list` | Read-only: list the GitHub orgs linked to a group via `chainctl guardener github status` (no GitHub authorization/browser flow). |
 | `guardener.actions.migrate` | Enqueue/inspect on-demand GitHub Actions migrations (`chainctl guardener github migrate create/get`). |
@@ -1337,7 +1337,7 @@ Create an image repository. Aliases: `make`, `mk`.
 - `--source` — Repository ID to sync from
 - `--tier` — Catalog tier: `BASE`, `APPLICATION`, `FIPS`, `AI`, `COMMERCIAL`, `DEVTOOLS`. Available on `create` as well as `update`. (The public categories doc only enumerates Base/Application/FIPS/AI; the CLI and API accept the broader superset above, plus `UNKNOWN` in API responses.)
 
-> `--bundles` is **only on `update`**, not `create` (v0.2.309: `create` accepts only `--parent`, `--description`, `--source`, `--tier`). Create the repo first, then assign bundles with `repos update`.
+> `--bundles` is **only on `update`**, not `create` (v0.2.341: `create` accepts only `--parent`, `--description`, `--source`, `--tier`). Create the repo first, then assign bundles with `repos update`.
 
 **Organization catalog cap:** Chainguard enforces a **maximum of 2500 container image repositories per organization** (Catalog Pricing limit). Creating a 2501st repo fails server-side.
 
@@ -2432,7 +2432,7 @@ AI-powered Dockerfile migration commands.
 - **Node** — `node` user is UID `65532`, `WORKDIR=/app`, `NODE_PORT=3000`, `dumb-init` shipped. Docker Hub's `node` uses a wrapper entrypoint; Chainguard's does **not** — `docker run node /bin/sh` fails. Add `ENTRYPOINT ["/usr/bin/dumb-init", "--"]` for signal handling. **`*-slim` Node tags omit `npm` and `busybox`** — runtime stage only, never a builder.
 - **Python** — entrypoint is `/usr/bin/python` for **both** `latest` and `latest-dev`. `docker run cgr.dev/chainguard/python echo hi` fails because `echo` becomes a python arg. If the Dockerfile prepends a venv to `PATH`, set an **explicit `ENTRYPOINT`** or system python (no venv packages) runs. Default user is `nonroot`; recommended `ENV PYTHONUNBUFFERED=1` and `ENV PYTHONDONTWRITEBYTECODE=1`.
 - **.NET** — must `USER 0` before `dotnet restore` or any apk operation in the build stage. Runtime stages run non-root automatically — no `USER` directive needed (unlike Microsoft images which need `USER $APP_UID`). Use `cgr.dev/chainguard/aspnet-runtime:latest` for ASP.NET; `cgr.dev/chainguard/dotnet-runtime:latest` for .NET Core console apps.
-- **Go** — the `static` runtime image has no glibc; the binary must be statically linked, so set `CGO_ENABLED=0` on the builder-stage `go build`. Otherwise use `glibc-dynamic`.
+- **Go** — the `static` runtime image has no glibc; the binary must be statically linked, so set `CGO_ENABLED=0` on the builder-stage `go build`. Otherwise use `glibc-dynamic` (**`cc-dynamic` is deprecated in favor of `glibc-dynamic`** — swap it when migrating older Dockerfiles).
 - **Java** — one-line rebase: `FROM maven` → `FROM cgr.dev/chainguard/maven`. Recommended pattern: `cgr.dev/chainguard/maven AS builder` → JRE image as the runner, copy the jar.
 - **PHP** — extensions baked into all PHP images: `php-mbstring`, `-curl`, `-openssl`, `-iconv`, `-mysqlnd`, `-pdo`, `-pdo_sqlite`, `-pdo_mysql`, `-sodium`, `-phar`. Laravel image adds `-ctype`, `-dom`, `-fileinfo`, `-simplexml`. **Web apps use `latest-fpm` / `latest-fpm-dev`**, not plain `latest`. Laravel image has a `laravel` system user (UID 1000) for shared-volume dev. List enabled extensions: `docker run --rm --entrypoint php cgr.dev/chainguard/php -m`.
 
@@ -2456,6 +2456,10 @@ AI-powered Dockerfile migration commands.
 7. Switch back to a non-root user before finalizing the image.
 8. Build and test your image to validate your setup.
 9. **Optional:** migrate to a multi-stage build that uses a distroless image variant as runtime.
+
+**`latest-dev` in production is officially sanctioned.** The `-dev` variants are low-to-zero-CVE and documented as production-ready — when a user genuinely needs a shell/package manager at runtime, staying on `latest-dev` is a supported option, not a compromise to warn against.
+
+**Installing APKs into a distroless (`:latest`) variant — chroot pattern.** When Custom Assembly or a language multi-stage build doesn't fit, the documented approach is a multi-stage build that `apk add --root /chroot ...` in a `-dev` builder stage and `COPY --from=builder /chroot /` into the distroless stage. Plain file-copying of binaries is discouraged: scanners won't register the packages (no APK database entry), so they silently escape CVE reporting.
 
 #### Dockerfile Converter (`dfc`) — non-AI alternative to the Guardener
 `dfc` is a fast, **offline, rule-based** Dockerfile converter — the right tool when an LLM-driven iterative migration is overkill (quick first-pass conversion, predictable output). Supports Alpine (apk), Debian/Ubuntu (apt/apt-get), Fedora/RHEL/UBI (yum/dnf/microdnf).
@@ -2686,7 +2690,7 @@ chainctl completion fish > ~/.config/fish/completions/chainctl.fish
 | `issuer.enforce.dev` | STS token service |
 | `auth.chainguard.dev` | Headless device-code activation |
 | `apk.cgr.dev`, `virtualapk.cgr.dev`, `packages.cgr.dev` | Private APK repos |
-| `packages.wolfi.dev` | Free-image APK repo |
+| `packages.wolfi.dev` | Wolfi OS APK repo (legacy free-image path; Free images now default to `apk.cgr.dev/chainguard`) |
 | `libraries.cgr.dev` | Chainguard Libraries proxy |
 | `9236a389bd48b984df91adc1bc924620.r2.cloudflarestorage.com` | Blob storage (R2) for `*.cgr.dev` |
 | `tarballs.cgr.dev` | Upstream source archives referenced by SBOM `downloadLocation` fields — only needed by tooling that resolves SPDX `downloadLocation` URLs (source-provenance checks, license/compliance scanners, air-gapped source mirroring); container/package pulls don't need it |
@@ -2854,7 +2858,7 @@ Authorization: Bearer <OIDC_TOKEN>
   # both run against cgr.dev/chainguard/openscap:latest-dev
   ```
 - **Chainguard VMs** ship Secure Boot, **hybrid CIS Level 1 + STIG baseline** (combining CIS Level 1 with STIG controls), FIPS 140-3 validated modules + SP 800-90B entropy, and the same 7-day-critical / 14-day-high CVE SLA as containers. **Node-replacement upgrades** only (no in-place). Compliance artifacts include POA&M, SCAP/OpenSCAP STIG+CIS scan results, and OpenSSL FIPS docs. VMs are **not** managed by `chainctl` — distributed via GCP Compute Engine, AWS (EC2/ECS/EKS), Azure Compute, QEMU/KVM (qcow2 and raw), VMware vSphere (VMDK), Nutanix (qcow2/raw). VM kernel posture: "Chainguard Factory tracks both the stable upstream and the latest LTS (for FIPS) versions of the kernel, building from source." Three named VM tiers: **Container Host VMs** (run containers), **Base VMs** (Chainguard Base, Java Base, Python Base — build your own), **Application VMs** (Nginx, Jenkins, Squid Proxy — turnkey). **Kernel-independent FIPS applies to VMs too** — application workloads use a FIPS-validated entropy source independent of the kernel, so VMs no longer need to be booted in FIPS mode. Caveat: low-level functions (disk encryption, IPsec, KMSV) still don't use FIPS-validated entropy with kernel-independent mode; on cloud platforms disk/network encryption is handled by the cloud provider's own FIPS-validated entropy.
-- **Chainguard OS vs Wolfi**: **Wolfi** is the OS under free-tier Chainguard Containers (`cgr.dev/chainguard/*`, mirrored to Docker Hub; APKs at `packages.wolfi.dev`). **Chainguard OS** is the production distribution under paid Chainguard products (private images, VMs, Libraries), with APKs at `apk.cgr.dev` / `packages.cgr.dev`. **Mixing content across Wolfi and Chainguard OS is explicitly unsupported.** A separate beta product, **Chainguard OS Packages**, exposes the full ~30,000-package Chainguard catalog for customers building their own images with Bazel/Dockerfiles/`rules_apko` — not compatible with Custom Assembly.
+- **Chainguard OS vs Wolfi**: **Wolfi** is the OS under free-tier Chainguard Containers (`cgr.dev/chainguard/*`, mirrored to Docker Hub; APKs historically at `packages.wolfi.dev` — Free images now default to `https://apk.cgr.dev/chainguard`, with Extra packages at `https://apk.cgr.dev/extra-packages` and per-org tracking URLs at `virtualapk.cgr.dev/$ORG_ID/{chainguard,extra-packages}`, where the org **UID is required — the org name won't resolve**). **Chainguard OS** is the production distribution under paid Chainguard products (private images, VMs, Libraries), with APKs at `apk.cgr.dev` / `packages.cgr.dev`. **Package retention:** non-latest APK versions are removed after **12 months** (public Wolfi/Extra and private org repos alike; removals run monthly on the second Wednesday) — a gotcha for anyone pinning APK package versions. **Mixing content across Wolfi and Chainguard OS is explicitly unsupported.** A separate beta product, **Chainguard OS Packages**, exposes the full ~30,000-package Chainguard catalog for customers building their own images with Bazel/Dockerfiles/`rules_apko` — not compatible with Custom Assembly.
 - **"Chainguard Repository"** is the named product for the single, policy-aware distribution endpoint. Current overview docs describe it as covering **both Chainguard Containers and Libraries**; the concrete policy-governed endpoint documented today is `libraries.cgr.dev` (JavaScript first). Don't confuse with `chainctl images repos` (image repos) or APK repos.
 - **CIS Docker Benchmark conformance**: Section 4 generally conformant with two caveats — **4.5 Content Trust** uses Cosign instead of Docker Content Trust (auditor discretion); **4.6 HEALTHCHECK** is not provided (Kubernetes does this at the orchestration layer, not Docker) — does not meet the benchmark literally.
 - **SLSA Level 3** applies to all Chainguard products (Containers, VMs, Libraries). Note the distinction in attestations below: the **predicate** is `https://slsa.dev/provenance/v1` — that's the provenance-format version, **not** SLSA Level 1. Implementation specifics: each build runs in a dedicated ephemeral environment, provenance is signed by the build-system control plane (not workers), signing keys never reside on build workers (off-box signing service), SBOM + provenance per artifact. Builder ID: `https://chainguard.dev/prod/builders/apkoaas/v1`; buildType: `https://chainguard.dev/buildtypes/apkoaas/v1` — useful when writing cosign policies.
@@ -3024,8 +3028,8 @@ chainctl images diff cgr.dev/chainguard/nginx:latest cgr.dev/chainguard/nginx:1.
 # List orgs
 chainctl iam organizations list
 
-# List folders in an org
-chainctl iam folders list --parent my-org
+# List folders in an org (the org is POSITIONAL — there is no --parent on folders list)
+chainctl iam folders list my-org
 
 # List identities
 chainctl iam identities list --parent my-org
@@ -3188,7 +3192,7 @@ docker run -e "HTTP_AUTH=basic:apk.cgr.dev:user:$(chainctl auth token --audience
   cgr.dev/$ORG/my-custom:latest-dev
 # Then inside: apk update && apk add <pkg>
 ```
-The repo URL inside the container (`cat /etc/apk/repositories`) is `https://apk.cgr.dev/<long-hex-id>` — the hex value is the org's UIDP, mapped to a name via `chainctl iam organizations ls -o table`. The `HTTP_AUTH` env-var format is literally `basic:<host>:<user>:<password>` where `<user>` is the placeholder `user` and `<password>` is the ephemeral token. Catalog customers can opt into a beta that extends the private APK repo to the **full ~30,000-package Chainguard OS / Wolfi catalog**.
+The repo URL inside the container (`cat /etc/apk/repositories`) is `https://apk.cgr.dev/<long-hex-id>` — the hex value is the org's UIDP, mapped to a name via `chainctl iam organizations ls -o table`; the URL **also works with the org name** in place of the UIDP. The `HTTP_AUTH` env-var format is literally `basic:<host>:<user>:<password>` where `<user>` is the placeholder `user` and `<password>` is the ephemeral token. For CI with a pull token, the documented pattern uses an **empty host field**: `HTTP_AUTH=basic::$CHAINGUARD_IDENTITY_ID:$CHAINGUARD_TOKEN`. Catalog customers can opt into a beta that extends the private APK repo to the **full ~30,000-package Chainguard OS / Wolfi catalog**.
 
 ### Kubernetes `imagePullSecrets` from a pull token
 ```bash
@@ -3270,6 +3274,8 @@ The Console is best for one-off exploration: browsing the image catalog, viewing
 `chainctl` is what you reach for when you know what you want: scripting, GitOps, anything CI, and a few capabilities the Console doesn't surface (`chainctl images diff` is **chainctl-only**).
 
 **Console "Manage pull tokens" gotcha:** the option lives on the **Overview page** (not a personal profile menu) and only appears when the org has the ecosystem entitlement AND the user holds the matching `*.pull_token_creator` role — when it's missing, `chainctl auth pull-token create` is the documented fallback.
+
+**Console "Requests" (beta):** when an image, package, or Helm chart doesn't exist in Chainguard's catalog, point users at the Console's Requests section to file a request for it — that's the platform workflow for net-new catalog content (distinct from self-serve "Add image", which only covers what already exists in the catalog).
 
 ---
 

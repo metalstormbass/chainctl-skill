@@ -1,6 +1,6 @@
 # chainctl Skill for Claude Code
 
-A custom [Claude Code](https://docs.anthropic.com/en/docs/claude-code) slash command that turns Claude into a **chainctl expert assistant** — helping you construct, explain, troubleshoot, and execute [`chainctl`](https://edu.chainguard.dev/chainguard/chainctl/) commands for the [Chainguard](https://www.chainguard.dev/) platform.
+A custom [Claude Code](https://docs.anthropic.com/en/docs/claude-code) slash command that turns Claude into a **chainctl expert assistant** — helping you construct, explain, troubleshoot, and execute [`chainctl`](https://edu.chainguard.dev/platform/chainctl/) commands for the [Chainguard](https://www.chainguard.dev/) platform.
 
 ## What is chainctl?
 
@@ -12,7 +12,11 @@ A custom [Claude Code](https://docs.anthropic.com/en/docs/claude-code) slash com
 - **IAM** — Organizations, folders, identities, roles, role-bindings, invites, identity providers, cloud account associations (AWS, Azure, GCP)
 - **Events** — Subscription management for platform events
 - **Packages** — Query package version data from Chainguard repositories
-- **Libraries** — Verify artifacts are built from Chainguard sources using SBOM/signature analysis
+- **Libraries** — Verify artifacts are built from Chainguard sources using SBOM/signature analysis; manage library policies, entitlements, and the resolution cache
+- **Policies** — Registry pull-time policy governance: enable/disable policies, custom policies, bindings, decisions, overrides
+- **Guardener** — GitHub App integration: link GitHub orgs to Chainguard groups and migrate GitHub Actions workflows to Chainguard equivalents
+- **Skills** — Publish, install, and manage agent skills on the Skills Registry (`skills.cgr.dev`)
+- **Actions & Starter** — Chainguard Actions catalog/entitlements and Catalog Starter org setup
 - **Configuration** — View, edit, set, validate local chainctl config
 
 ## Installation
@@ -20,7 +24,7 @@ A custom [Claude Code](https://docs.anthropic.com/en/docs/claude-code) slash com
 ### Prerequisites
 
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI installed
-- [`chainctl`](https://edu.chainguard.dev/chainguard/chainctl-usage/how-to-install-chainctl/) installed and on your `PATH`
+- [`chainctl`](https://edu.chainguard.dev/platform/chainctl-usage/how-to-install-chainctl/) installed and on your `PATH`
 
 **Install chainctl (macOS):**
 ```bash
@@ -148,15 +152,15 @@ chainctl iam role-bindings list --parent my-org -o json
 | `chainctl auth` | Authentication & token management | `login`, `logout`, `status`, `configure-docker`, `configure-npm`, `token` (+ `capabilities`), `pull-token`, `delete-account` |
 | `chainctl config` | Local configuration | `view`, `edit`, `set`, `unset`, `reset`, `save`, `validate` |
 | `chainctl iam` | Identity & access management | `organizations`, `folders`, `identities`, `roles`, `role-bindings`, `invites`, `identity-providers`, `external-group-role-mappings`, `account-associations` |
-| `chainctl images` | Container image operations | `list`, `diff`, `history`, `changelog`, `tags`, `repos`, `advisories`, `entitlements`, `helm` |
+| `chainctl images` | Container image operations | `list`, `diff`, `history`, `changelog`, `tags`, `repos`, `advisories`, `entitlements`, `catalog`, `helm` (`values`, `refs`, `add-chart`, `history`) |
 | `chainctl events` | Event subscriptions | `subscriptions` (`list`, `create`, `delete`) |
 | `chainctl packages` | Package management | `versions list` |
-| `chainctl libraries` | Libraries verification & governance | `verify`, `update-hashes`, `packages` (`list`, `count`, `versions`, `blocked`), `policy`, `entitlements` |
-| `chainctl policies` | Registry pull-time policy governance | `list`, `describe`, `enable`, `disable`, `check`, `binding`, `decision`, `override` |
+| `chainctl libraries` | Libraries verification & governance | `verify`, `update-hashes`, `packages` (`list`, `count`, `versions`, `blocked`), `policy`, `entitlements`, `cache` |
+| `chainctl policies` | Registry pull-time policy governance | `list`, `describe`, `enable`, `disable`, `check`, `binding`, `decision`, `override`, `custom` |
 | `chainctl actions` | Chainguard Actions product | `entitlements`, `catalog list`, `list`, `discover` |
-| `chainctl agent` | The Guardener (local Dockerfile migration) | `dockerfile` (`build`, `optimize`, `upgrade`, `validate`), `accept-terms` |
-| `chainctl guardener` | Guardener GitHub App integration | `github` (`link`, `unlink`, `status`) |
-| `chainctl skills` | Skills Registry (`skills.cgr.dev`) | `push`, `pull`, `install`, `uninstall`, `list`, `versions`, `describe`, `validate`, `delete`, `entitlements` |
+| `chainctl agent` | The Guardener (local Dockerfile migration) | `accept-terms`, `dockerfile` (`build`, `optimize`, `upgrade`, `validate` — hidden from `chainctl agent --help` but functional) |
+| `chainctl guardener` | Guardener GitHub App integration | `github` (`link`, `unlink`, `status`, `migrate`) |
+| `chainctl skills` | Skills Registry (`skills.cgr.dev`) | `push`, `pull`, `install`, `uninstall`, `list`, `versions`, `describe`, `validate`, `delete`, `entitlements`, `accept-terms` |
 | `chainctl starter` | Catalog Starter orgs | `init`, `request-access`, `add-images`, `status` |
 | `chainctl update` | Self-update | — |
 | `chainctl version` | Print version | — |
@@ -240,10 +244,10 @@ chainctl <new-command> --help
 
 ## Resources
 
-- [Chainguard Academy — chainctl Usage](https://edu.chainguard.dev/chainguard/chainctl-usage/)
-- [Chainguard Academy — chainctl Reference](https://edu.chainguard.dev/chainguard/chainctl/)
-- [Custom Assembly Documentation](https://edu.chainguard.dev/chainguard/chainguard-images/features/ca-docs/custom-assembly-chainctl/)
-- [chainctl Roles & Capabilities](https://go.chainguard.dev/chainctl-roles)
+- [Chainguard Academy — chainctl Usage](https://edu.chainguard.dev/platform/chainctl-usage/)
+- [Chainguard Academy — chainctl Reference](https://edu.chainguard.dev/platform/chainctl/)
+- [Custom Assembly Documentation](https://edu.chainguard.dev/chainguard/containers/features/ca-docs/custom-assembly-chainctl/)
+- [chainctl Roles & Capabilities](https://edu.chainguard.dev/platform/administration/iam-organizations/roles-role-bindings/capabilities-reference/)
 - [Chainguard Platform Console](https://console.chainguard.dev)
 
 ## License

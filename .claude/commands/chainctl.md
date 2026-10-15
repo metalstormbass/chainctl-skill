@@ -1965,7 +1965,7 @@ Subscribe to events. Aliases: `make`, `mk`.
 ### `chainctl packages versions list <PACKAGE_NAME>`
 List version data for a Chainguard **managed version stream**. The `versions` node has aliases `version` and `vers`; `list` aliases `ls`.
 
-**Usage:** `chainctl packages versions list <PACKAGE_NAME>` — `PACKAGE_NAME` is a **required positional argument** (e.g. `bazel`, `airflow`, `python-3.13`, `actions-runner`). These are curated version streams, not arbitrary apk packages. For arbitrary apk packages, run `apk info` / `apk search` inside an image instead.
+**Usage:** `chainctl packages versions list <PACKAGE_NAME>` — `PACKAGE_NAME` is a **required positional argument** (e.g. `bazel`, `airflow`, `python-3.13`, `actions-runner`). These are curated version streams, not arbitrary apk packages. For arbitrary apk packages, run `apk info` / `apk search` inside an image instead. This command does not map foreign package names to APK names — to find the APK equivalent of an APT or RPM package, use the docs MCP server's `find_package_equivalent` tool (see **Package mapping** under agent, and Tips).
 
 **Flags:**
 - `--include-inactive` — Include **only** packages within the EOL grace period end date (a filter, not additive); no end date is considered inclusive
@@ -3019,11 +3019,34 @@ AI-powered Dockerfile migration commands.
 2. Replace your current base image with a standard `-dev` (such as `latest-dev`) variant as a starting point.
 3. Add `USER root` before package-install or admin commands.
 4. Replace `apt install` (or `yum install`) with `apk add`.
-5. Use `apk search` on a running container (or the APK Explorer, or the docs MCP server's `find_package_equivalent` tool — see Tips) to identify packages — names/bundling may differ.
+5. Map each APT/RPM package name to its APK equivalent with the docs MCP server's `find_package_equivalent` tool (see **Package mapping** below). If a package has no mapping, fall back to `apk search` on a running container or the APK Explorer — names/bundling may differ.
 6. Set proper file permissions when copying app files.
 7. Switch back to a non-root user before finalizing the image.
 8. Build and test your image to validate your setup.
 9. **Optional:** migrate to a multi-stage build that uses a distroless image variant as runtime.
+
+**Package mapping — APT/RPM package names to APK package names.** Do this at step 5, in this order:
+
+1. **Call `find_package_equivalent` first.** This tool on the Chainguard docs MCP server (setup in Tips) takes one source package name per call, plus the source distro (`debian` or `fedora`). Call it once for each package in the source `apt install` / `yum install` list, then build the `apk add` list from the results. Example:
+
+   ```
+   # Source (Debian/Ubuntu)
+   apt install -y build-essential libssl-dev pkg-config
+
+   # find_package_equivalent, one call per package
+   build-essential  (distro=debian)  ->  build-base
+   libssl-dev       (distro=debian)  ->  libssl3
+   pkg-config       (distro=debian)  ->  pkgconf
+
+   # Result (Chainguard/Wolfi)
+   apk add build-base libssl3 pkgconf
+   ```
+
+   Bundling can differ: one source package can map to several APK packages, or the reverse. Confirm each result with `apk search <name>` in the `-dev` image before you finalize the `apk add` list.
+2. **Fall back to `apk search` when no mapping exists** (including Alpine sources — the tool has no Alpine mappings yet). Search by the file you need, not by the old package name: `apk search cmd:<binary>` finds the package that provides a binary, and `apk search so:<lib>.so*` finds the package that provides a shared library. The `cmd:` form also works directly in `apk add`. The APK Explorer gives the same search in a browser.
+3. **For a whole Dockerfile, let a converter map the names.** `dfc` (next section) rewrites `apt`/`yum` lines and package names in one pass. The Image Matcher API also returns `requiredApks` and `missingPackages` for a source image SBOM (see Image Matcher).
+
+There is no `chainctl` subcommand for package-name mapping: `chainctl packages versions list` covers curated version streams only, not arbitrary APK packages.
 
 **`latest-dev` in production is officially sanctioned.** The `-dev` variants are low-to-zero-CVE and documented as production-ready — when a user genuinely needs a shell/package manager at runtime, staying on `latest-dev` is a supported option, not a compromise to warn against.
 

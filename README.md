@@ -1,24 +1,25 @@
 # chainctl Skill for Claude Code
 
-A custom [Claude Code](https://docs.anthropic.com/en/docs/claude-code) slash command that turns Claude into a **chainctl expert assistant** — helping you construct, explain, troubleshoot, and execute [`chainctl`](https://edu.chainguard.dev/platform/chainctl/) commands for the [Chainguard](https://www.chainguard.dev/) platform.
+A custom [Claude Code](https://docs.anthropic.com/en/docs/claude-code) slash command that turns Claude into a **chainctl expert assistant** — helping you construct, explain, troubleshoot, and execute [`chainctl`](https://www.chainguard.dev/docs/platform/chainctl) commands for the [Chainguard](https://www.chainguard.dev/) platform.
 
 ## What is chainctl?
 
 `chainctl` (Chainguard Control) is the official CLI for the Chainguard platform. It provides command-line access to:
 
-- **Authentication** — Login, logout, token management, Docker credential helpers, pull tokens
-- **Container Images** — List, diff, history, changelog, tags, advisories, repos, Helm chart values
+- **Authentication** — Login, logout, token management, Docker credential helpers, pull tokens, sign-in sessions (`chainctl auth sessions`)
+- **Container Images** — List, diff, history, changelog, tags, advisories, repos, Helm charts (`add-chart`, `status`, values), and self-serve image entitlements (`images entitlements add-image` / `remove-image` / `swap-image`)
 - **Custom Assembly** — Customize Chainguard images by adding packages, env vars, OCI annotations, user accounts, and certificates without maintaining custom build pipelines; tag-based overlays (`chainctl images overlays`) and Guarded Entrypoint (beta)
-- **IAM** — Organizations, folders, identities, roles, role-bindings, invites, identity providers, cloud account associations (AWS, Azure, GCP)
+- **IAM** — Organizations, folders, identities, roles, role-bindings, invites, identity providers (incl. SCIM group-to-role mapping via `scim groups` / `scim manual-bindings`), org sign-in session policy (`chainctl iam auth-policy`), cloud account associations (AWS, Azure, GCP)
 - **Events** — Subscription management for platform events
 - **Packages** — Query package version data from Chainguard repositories
-- **Libraries** — Verify artifacts are built from Chainguard sources using SBOM/signature analysis; manage library policies, entitlements, and the resolution cache
+- **Libraries** — Verify artifacts are built from Chainguard sources using SBOM/signature analysis; manage library policies, entitlements, named libraries repositories (`chainctl libraries repos`, beta, hidden), and the resolution cache
 - **Policies** — Registry pull-time policy governance: enable/disable policies, custom policies, bindings, decisions, overrides
 - **Guardener** — Chainguard App (GitHub) integration: link GitHub orgs to Chainguard groups, migrate GitHub Actions workflows and container image references to Chainguard equivalents
 - **Skills** — Publish, install, and manage agent skills on the Skills Registry (`skills.cgr.dev`)
-- **Actions & Starter** — Chainguard Actions catalog/entitlements and Catalog Starter org setup
-- **Checks** — Chainguard Checks (beta): CI that runs each check in a fresh Chainguard OS microVM. Covers the `.chainguard/ci.yaml` / `.chainguard/ci/` config, GitHub integration, workload identities, caches, and `chainctl checks` (alias `ci`) for status/failures/logs/rerun/validate/explain/migrate
-- **Workspaces** — Chainguard Workspaces (beta): remote microVM dev sessions for repos and coding agents via `chainctl develop`. Covers sign-up with `chainctl develop init`, sessions, environments, brokered credentials, GitHub-as-you, Claude Code, and `run-ci`
+- **Actions & Starter** — Chainguard Actions catalog/entitlements and Catalog Starter org setup (incl. `starter accept-terms`)
+- **Plans** — Self-serve plan, limits, and usage for Starter and Team (`chainctl plans describe` / `quotas list` / `update`)
+- **Checks** — Chainguard Checks (beta): CI that runs each check in a fresh Chainguard OS microVM. Covers the `.chainguard/ci.yaml` / `.chainguard/ci/` config, GitHub integration, workload identities, caches, and `chainctl checks` (alias `ci`) for status/failures/logs/rerun/validate/explain/migrate, plus the `chainctl checks mcp` stdio MCP server
+- **Workspaces** — Chainguard Workspaces (beta): remote microVM dev sessions for repos and coding agents via `chainctl develop`. Covers sign-up with `chainctl develop init`, sessions, environments, brokered credentials, GitHub-as-you, Claude Code, `run-ci`, and the newer `develop exec` / `cp` / `questions` / `mcp` commands
 - **Configuration** — View, edit, set, validate local chainctl config
 
 ## Installation
@@ -26,7 +27,7 @@ A custom [Claude Code](https://docs.anthropic.com/en/docs/claude-code) slash com
 ### Prerequisites
 
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI installed
-- [`chainctl`](https://edu.chainguard.dev/platform/chainctl-usage/how-to-install-chainctl/) installed and on your `PATH`
+- [`chainctl`](https://www.chainguard.dev/docs/platform/chainctl-usage/how-to-install-chainctl) installed and on your `PATH`
 
 **Install chainctl (macOS):**
 ```bash
@@ -151,21 +152,22 @@ chainctl iam role-bindings list --parent my-org -o json
 
 | Command | Description | Subcommands |
 |---------|-------------|-------------|
-| `chainctl auth` | Authentication & token management | `login`, `logout`, `status`, `configure-docker`, `configure-npm`, `configure` (`docker`, `npm`, `nuget`), `configure-refresh-service`, `token` (+ `capabilities`, delegation grants), `pull-token`, `delete-account` |
+| `chainctl auth` | Authentication & token management | `login`, `logout`, `status`, `sessions`, `configure-docker`, `configure-npm`, `configure` (`docker`, `npm`, `nuget`), `configure-refresh-service`, `token` (+ `capabilities`, delegation grants), `pull-token`, `delete-account` |
 | `chainctl config` | Local configuration | `view`, `edit`, `set`, `unset`, `reset`, `save`, `validate` |
-| `chainctl iam` | Identity & access management | `organizations`, `folders`, `identities`, `roles`, `role-bindings`, `invites`, `identity-providers`, `external-group-role-mappings`, `account-associations` |
-| `chainctl images` | Container image operations | `list`, `diff`, `history`, `changelog`, `tags`, `repos`, `overlays`, `advisories`, `entitlements`, `catalog`, `discover`, `helm` (`values`, `refs`, `add-chart`, `history`) |
+| `chainctl iam` | Identity & access management | `organizations`, `folders`, `identities`, `roles`, `role-bindings`, `invites`, `identity-providers` (incl. `scim groups`, `scim manual-bindings`), `auth-policy`, `external-group-role-mappings`, `account-associations` |
+| `chainctl images` | Container image operations | `list`, `diff`, `history`, `changelog`, `tags`, `repos`, `overlays`, `advisories`, `entitlements`, `catalog`, `discover`, `helm` (`values`, `refs`, `add-chart`, `history`, `status`) |
 | `chainctl events` | Event subscriptions | `subscriptions` (`list`, `create`, `delete`) |
 | `chainctl packages` | Package management | `versions list` |
-| `chainctl libraries` | Libraries verification & governance | `verify`, `update-hashes`, `remediate`, `packages` (`list`, `count`, `versions`, `blocked`), `policy`, `entitlements`, `cache`, `go upload`, `storage list` |
+| `chainctl libraries` | Libraries verification & governance | `verify`, `update-hashes`, `remediate`, `packages` (`list`, `count`, `versions`, `blocked`), `policy`, `entitlements`, `repos` (beta, hidden), `cache`, `go upload`, `storage list` |
 | `chainctl policy` (alias `policies`) | Registry pull-time policy governance | `list`, `describe`, `enable`, `disable`, `check`, `binding`, `decision`, `override`, `custom` |
 | `chainctl actions` | Chainguard Actions product | `entitlements`, `catalog list`, `list`, `discover` |
 | `chainctl agent` | The Guardener (local Dockerfile migration) | `accept-terms`, `dockerfile` (`build`, `optimize`, `upgrade`, `validate` — hidden from `chainctl agent --help` but functional) |
 | `chainctl guardener` | Guardener GitHub App integration | `github` (`link`, `unlink`, `status`, `migrate` (`create`, `get`, `list`)), `scans` (`list`, `get`), `entitlement get` |
 | `chainctl skills` | Skills Registry (`skills.cgr.dev`) | `push`, `pull`, `install`, `uninstall`, `list`, `versions`, `describe`, `validate`, `verify`, `harden`, `status`, `registry` (`publish`, `install`), `delete`, `entitlements`, `accept-terms` |
-| `chainctl starter` | Catalog Starter orgs | `init`, `request-access`, `add-images`, `status` |
-| `chainctl develop` (alias `dev`) | Chainguard Workspaces dev sessions (hidden during beta) | `init`, `accept-terms`, `list`, `rename`, `delete`, `check`, `creds`, `policy`, `github`, `claude` |
-| `chainctl checks` (alias `ci`) | Chainguard Checks (hidden during beta) | `status`, `failures`, `logs`, `trace`, `events`, `attempts`, `describe`, `list`, `run`, `rerun`, `cancel`, `stats`, `top`, `trends`, `validate`, `explain`, `migrate`, `accept-terms` |
+| `chainctl starter` | Catalog Starter orgs | `init`, `accept-terms`, `request-access`, `add-images`, `status` |
+| `chainctl plans` (alias `plan`) | Self-serve plan, limits & usage | `describe`, `quotas list`, `update` (confirm first: changes billing) |
+| `chainctl develop` (alias `dev`) | Chainguard Workspaces dev sessions (beta) | `init`, `accept-terms`, `exec`, `cp`, `questions`, `mcp`, `list`, `rename`, `delete`, `check`, `creds`, `policy`, `github`, `claude` |
+| `chainctl checks` (alias `ci`) | Chainguard Checks (beta) | `status`, `failures`, `logs`, `trace`, `events`, `attempts`, `describe`, `list`, `run`, `rerun`, `cancel`, `stats`, `top`, `trends`, `validate`, `explain`, `migrate`, `mcp`, `accept-terms` |
 | `chainctl update` | Self-update | — |
 | `chainctl version` | Print version | — |
 
@@ -212,7 +214,7 @@ The included `settings.local.json` pre-approves these tool calls so Claude can r
 
 This allows Claude to:
 - Run any `chainctl` subcommand
-- Fetch documentation from `edu.chainguard.dev`
+- Fetch documentation from `www.chainguard.dev/docs` (formerly `edu.chainguard.dev`, which 301-redirects)
 - Search the web for additional Chainguard context
 
 > **Note:** Destructive commands (`delete`, `reset`, `delete-account`) are allowed at the CLI permission level but the skill prompt instructs Claude to **always confirm** before executing them.
@@ -248,10 +250,10 @@ chainctl <new-command> --help
 
 ## Resources
 
-- [Chainguard Academy — chainctl Usage](https://edu.chainguard.dev/platform/chainctl-usage/)
-- [Chainguard Academy — chainctl Reference](https://edu.chainguard.dev/platform/chainctl/)
-- [Custom Assembly Documentation](https://edu.chainguard.dev/chainguard/containers/features/ca-docs/custom-assembly-chainctl/)
-- [chainctl Roles & Capabilities](https://edu.chainguard.dev/platform/administration/iam-organizations/roles-role-bindings/capabilities-reference/)
+- [Chainguard Docs — chainctl Usage](https://www.chainguard.dev/docs/platform/chainctl-usage)
+- [Chainguard Docs — chainctl Reference](https://www.chainguard.dev/docs/platform/chainctl)
+- [Custom Assembly Documentation](https://www.chainguard.dev/docs/chainguard/containers/custom-assembly/custom-assembly-chainctl)
+- [chainctl Roles & Capabilities](https://www.chainguard.dev/docs/platform/administration/iam-organizations/roles-role-bindings/capabilities-reference)
 - [Chainguard Platform Console](https://console.chainguard.dev)
 
 ## License
